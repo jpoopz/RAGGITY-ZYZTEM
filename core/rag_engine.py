@@ -6,12 +6,14 @@ from __future__ import annotations
 
 import os
 import glob
-from typing import List, Dict, Any
+import threading
+from typing import List, Dict, Any, Optional, Callable
 
 from .paths import ensure_dirs, get_vector_dir, get_data_dir
 from .config import CFG
 from logger import get_logger
 from .llm_connector import LLMConnector
+from .prof import span
 
 # Import cloud bridge for telemetry
 try:
@@ -33,6 +35,12 @@ class RAGEngine:
         os.makedirs(self.store_dir, exist_ok=True)
         self.llm = LLMConnector()
         
+        # Thread safety for index writes
+        self._index_lock = threading.Lock()
+        
+        # Batch size for embeddings
+        self.batch_size = 64
+        
         # Vector store specific state
         if self.vector_store == "faiss":
             self.index = None
@@ -48,7 +56,7 @@ class RAGEngine:
         log.info(f"RAGEngine initialized with vector_store={self.vector_store}")
 
     def _load_texts(self, path: str) -> List[str]:
-        """Load texts from file or directory"""
+        """Load texts from file or directory with multiple format support"""
         texts = []
         if os.path.isdir(path):
             files = glob.glob(os.path.join(path, "**/*"), recursive=True)
@@ -58,14 +66,24 @@ class RAGEngine:
         for f in files:
             if not os.path.isfile(f):
                 continue
-            if f.lower().endswith(".txt"):
+            
+            ext = f.lower()
+            
+            if ext.endswith(".txt"):
                 try:
                     with open(f, "r", encoding="utf-8", errors="ignore") as file:
                         texts.append(file.read())
                 except Exception as e:
                     log.error(f"Error loading {f}: {e}")
-            elif f.lower().endswith(".pdf"):
+            
+            elif ext.endswith(".pdf"):
                 texts.extend(self._load_pdf(f))
+            
+            elif ext.endswith(".md") or ext.endswith(".markdown"):
+                texts.extend(self._load_markdown(f))
+            
+            elif ext.endswith(".docx"):
+                texts.extend(self._load_docx(f))
         
         return texts
 
@@ -78,14 +96,100 @@ class RAGEngine:
         except Exception as e:
             log.error(f"PDF load error {fp}: {e}")
             return []
+    
+    def _load_markdown(self, fp: str) -> List[str]:
+        """Load Markdown file"""
+        try:
+            with open(fp, "r", encoding="utf-8", errors="ignore") as f:
+                return [f.read()]
+        except Exception as e:
+            log.error(f"Markdown load error {fp}: {e}")
+            return []
+    
+    def _load_docx(self, fp: str) -> List[str]:
+        """Load DOCX file and extract text"""
+        try:
+            import docx
+            doc = docx.Document(fp)
+            text = "\n".join([para.text for para in doc.paragraphs])
+            return [text] if text.strip() else []
+        except ImportError:
+            log.warning(f"python-docx not installed, skipping {fp}")
+            return []
+        except Exception as e:
+            log.error(f"DOCX load error {fp}: {e}")
+            return []
 
-    def _chunk(self, text: str, size: int = 800, overlap: int = 120) -> List[str]:
-        """Chunk text into overlapping segments"""
-        out, i, n = [], 0, len(text)
-        while i < n:
-            out.append(text[i:i+size])
-            i += size - overlap
-        return out
+    def _chunk(self, text: str, min_size: int = 800, max_size: int = 1000, overlap_pct: float = 0.12) -> List[str]:
+        """
+        Paragraph-aware chunking with overlapping windows.
+        
+        Splits by double newline for paragraphs, then packs them into
+        windows of ~800-1000 chars with 10-15% overlap.
+        
+        Args:
+            text: Input text to chunk
+            min_size: Minimum chunk size in characters
+            max_size: Maximum chunk size in characters
+            overlap_pct: Overlap percentage (0.10 = 10%, 0.15 = 15%)
+        
+        Returns:
+            List of text chunks
+        """
+        # Split into paragraphs
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        
+        if not paragraphs:
+            return []
+        
+        chunks = []
+        current_chunk = []
+        current_size = 0
+        
+        for para in paragraphs:
+            para_len = len(para)
+            
+            # If adding this paragraph would exceed max_size and we have content
+            if current_size + para_len > max_size and current_chunk:
+                # Save current chunk
+                chunks.append("\n\n".join(current_chunk))
+                
+                # Calculate overlap: keep last ~12% of previous chunk
+                overlap_size = int(current_size * overlap_pct)
+                overlap_text = "\n\n".join(current_chunk)[-overlap_size:] if overlap_size > 0 else ""
+                
+                # Start new chunk with overlap
+                if overlap_text:
+                    current_chunk = [overlap_text, para]
+                    current_size = len(overlap_text) + para_len
+                else:
+                    current_chunk = [para]
+                    current_size = para_len
+            else:
+                # Add paragraph to current chunk
+                current_chunk.append(para)
+                current_size += para_len
+                
+                # If we've reached a good size, save the chunk
+                if current_size >= min_size:
+                    chunks.append("\n\n".join(current_chunk))
+                    
+                    # Calculate overlap for next chunk
+                    overlap_size = int(current_size * overlap_pct)
+                    overlap_text = "\n\n".join(current_chunk)[-overlap_size:] if overlap_size > 0 else ""
+                    
+                    if overlap_text:
+                        current_chunk = [overlap_text]
+                        current_size = len(overlap_text)
+                    else:
+                        current_chunk = []
+                        current_size = 0
+        
+        # Don't forget the last chunk
+        if current_chunk:
+            chunks.append("\n\n".join(current_chunk))
+        
+        return chunks
 
     # ========== FAISS Implementation ==========
     
@@ -150,8 +254,14 @@ class RAGEngine:
         elif self.vector_store == "chroma":
             self._ingest_chroma(path)
 
-    def _ingest_faiss(self, path: str):
-        """Ingest documents into FAISS index"""
+    def _ingest_faiss(self, path: str, progress_callback: Optional[Callable[[int, int], None]] = None):
+        """
+        Ingest documents into FAISS index with batched embeddings.
+        
+        Args:
+            path: Path to documents
+            progress_callback: Optional callback(current_batch, total_batches)
+        """
         import numpy as np
         import json
         
@@ -161,24 +271,57 @@ class RAGEngine:
             log.error("faiss-cpu not installed. Run: pip install faiss-cpu")
             return
         
-        # Load and chunk texts
-        texts = []
-        for t in self._load_texts(path):
-            if t.strip():  # Skip empty texts
-                texts.extend(self._chunk(t))
+        with span("load_and_chunk"):
+            # Load and chunk texts
+            texts = []
+            for t in self._load_texts(path):
+                if t.strip():  # Skip empty texts
+                    texts.extend(self._chunk(t))
         
         if not texts:
             log.warning("No texts found to ingest.")
             return
         
-        log.info(f"Generating embeddings for {len(texts)} chunks...")
+        # Deduplicate chunks
+        with span("deduplicate"):
+            unique_texts = []
+            seen = set()
+            for t in texts:
+                t_stripped = t.strip()
+                if t_stripped and t_stripped not in seen:
+                    unique_texts.append(t)
+                    seen.add(t_stripped)
+            
+            if len(unique_texts) < len(texts):
+                log.info(f"Deduplicated: {len(texts)} -> {len(unique_texts)} chunks")
+            texts = unique_texts
         
-        # Generate embeddings
-        try:
-            embs = self.llm.embed(texts)
-        except Exception as e:
-            log.error(f"Error generating embeddings: {e}")
-            return
+        log.info(f"Generating embeddings for {len(texts)} chunks in batches of {self.batch_size}...")
+        
+        # Generate embeddings in batches
+        all_embs = []
+        total_batches = (len(texts) + self.batch_size - 1) // self.batch_size
+        
+        for batch_idx in range(0, len(texts), self.batch_size):
+            batch_num = batch_idx // self.batch_size + 1
+            batch = texts[batch_idx:batch_idx + self.batch_size]
+            
+            with span(f"embed_batch_{batch_num}"):
+                try:
+                    batch_embs = self.llm.embed(batch)
+                    all_embs.extend(batch_embs)
+                    
+                    log.info(f"Batch {batch_num}/{total_batches}: embedded {len(batch)} chunks")
+                    
+                    # Call progress callback if provided
+                    if progress_callback:
+                        progress_callback(batch_num, total_batches)
+                    
+                except Exception as e:
+                    log.error(f"Error generating embeddings for batch {batch_num}: {e}")
+                    return
+        
+        embs = all_embs
         
         # Convert to numpy array
         X = np.array(embs).astype("float32")

@@ -15,6 +15,19 @@ A production-ready Retrieval Augmented Generation system combining powerful docu
 - 📊 **System Monitor**: Live CPU/RAM/GPU tracking with color-coded progress bars
 - 🔍 **Smart Troubleshooter**: Automatic log analysis and fix suggestions
 - 📝 **Export Tools**: Query results to Markdown, system snapshots to JSON
+- ⚡ **Performance Optimizations**:
+  - **Embedding Cache**: Disk-backed cache prevents redundant API calls
+  - **Batched Embeddings**: Process chunks in batches of 64 for efficiency
+  - **Paragraph-Aware Chunking**: Intelligent text splitting with 10-15% overlap
+  - **Concurrent Ingestion**: Thread-pooled document processing
+  - **Deduplication**: Automatic removal of duplicate chunks
+- 🎯 **Advanced Features**:
+  - **Streaming Answers**: Real-time token streaming for faster perceived responses
+  - **Vector Store Switcher**: Easy toggle between FAISS and ChromaDB in UI
+  - **Toast Notifications**: Non-intrusive success/error feedback
+  - **Debounced Queries**: Prevents accidental duplicate submissions
+  - **Profiling**: Built-in span profiler for performance monitoring
+  - **Structured Telemetry**: JSON event logging with Prometheus metrics
 
 ---
 
@@ -325,7 +338,30 @@ Current system resource usage.
 
 ### Running Tests
 ```powershell
+# Unit tests
 pytest -q
+
+# With coverage
+pytest --cov=core --cov=modules --cov-report=html
+
+# Evaluation tests
+pytest tests/test_evals.py -v
+
+# Specific test file
+pytest tests/test_clo_client.py -v
+```
+
+### Load Testing
+```bash
+# Simple Python load runner
+python tests/load_query.py -n 100 -c 5
+
+# With Locust (install first: pip install locust)
+locust -f locustfile.py --host http://localhost:8000 --users 10 --spawn-rate 2 --run-time 60s --headless
+
+# Locust with web UI
+locust -f locustfile.py --host http://localhost:8000
+# Then open: http://localhost:8089
 ```
 
 ### Pre-commit Hooks
@@ -337,8 +373,11 @@ pre-commit run --all-files
 
 ### CI/CD
 GitHub Actions workflow runs on push/PR:
-- Pytest test suite
+- Pytest test suite with coverage
 - Pre-commit checks (Black, Isort, Flake8)
+- Evaluation golden tests
+- Coverage upload to Codecov
+- Automatic draft release on version tags
 
 ---
 

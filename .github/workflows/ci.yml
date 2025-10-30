@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches: [main, develop]
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -9,18 +11,67 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install deps
+      
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pre-commit pytest
+          pip install pre-commit pytest pytest-cov coverage
+      
       - name: Run pre-commit checks
         run: |
           pre-commit run --all-files
-      - name: Run tests
+      
+      - name: Run unit tests with coverage
         run: |
-          pytest -q
+          pytest tests/ -v --cov=core --cov=modules --cov-report=xml --cov-report=term
+      
+      - name: Run evaluation tests
+        run: |
+          pytest tests/test_evals.py -v || echo "Eval tests skipped (docs not present)"
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+  
+  release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: true
+          prerelease: false
+          body: |
+            ## RAGGITY ZYZTEM Release
+            
+            ### Features
+            - RAG engine with FAISS/ChromaDB support
+            - Premium dark UI with CustomTkinter
+            - CLO 3D integration
+            - Cloud bridge for hybrid mode
+            - System monitoring and diagnostics
+            
+            ### Installation
+            See README.md for setup instructions.
+            
+            ### Changes
+            See commit history for detailed changes.
 

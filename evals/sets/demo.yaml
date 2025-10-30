@@ -1,0 +1,48 @@
+# Demo Evaluation Set
+# Small set of Q/A pairs for testing RAG quality
+
+# Document to ingest before running evaluations
+documents:
+  - path: "evals/docs/sample.txt"
+    description: "Sample document with basic facts"
+
+# Question-Answer pairs
+# Each pair should have:
+#   - question: The query to test
+#   - expected_answer: Expected response (or keywords that should appear)
+#   - match_type: exact, substring, or keywords
+qa_pairs:
+  - question: "What is RAGGITY ZYZTEM?"
+    expected_answer: "RAG system"
+    match_type: "substring"
+    category: "basic"
+  
+  - question: "What vector stores are supported?"
+    expected_answer: "FAISS"
+    match_type: "keywords"
+    keywords: ["FAISS", "faiss"]
+    category: "technical"
+  
+  - question: "What LLM providers can be used?"
+    expected_answer: "Ollama"
+    match_type: "keywords"
+    keywords: ["Ollama", "OpenAI"]
+    category: "technical"
+  
+  - question: "How do you start the API server?"
+    expected_answer: "start_api.bat"
+    match_type: "substring"
+    category: "usage"
+
+# Evaluation thresholds
+thresholds:
+  min_exact_match: 0.0     # Not strict on exact matches
+  min_substring_match: 0.6  # At least 60% should have expected substring
+  min_keywords_match: 0.75  # At least 75% should contain expected keywords
+  min_overall: 0.65         # Overall score must be >= 65%
+
+# Evaluation settings
+settings:
+  top_k: 3                  # Number of contexts to retrieve
+  timeout: 30               # Timeout per query in seconds
+

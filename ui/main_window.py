@@ -25,6 +25,13 @@ from core.gpu import get_gpu_status
 from core.config import CFG
 from logger import log
 
+# Import version
+try:
+    from version import __version__, CODENAME
+except ImportError:
+    __version__ = "2.0.0"
+    CODENAME = "Luxe Edition"
+
 # Import cloud bridge
 try:
     from core.cloud_bridge import bridge
@@ -72,14 +79,23 @@ class RaggityUI(ctk.CTk):
         self.app_bar.pack(fill="x", padx=0, pady=0)
         self.app_bar.pack_propagate(False)
         
-        # App title
+        # App title with version
         title = ctk.CTkLabel(
             self.app_bar,
-            text="⚙️ RAGGITY ZYZTEM 2.0",
+            text=f"⚙️ RAGGITY ZYZTEM {__version__}",
             font=heading(),
             text_color=ACCENT
         )
         title.pack(side="left", padx=20)
+        
+        # Codename subtitle
+        codename_label = ctk.CTkLabel(
+            self.app_bar,
+            text=f"// {CODENAME}",
+            font=small(),
+            text_color=TEXT_SECONDARY
+        )
+        codename_label.pack(side="left", padx=(0, 20))
         
         # Spinner (shown during network ops)
         self.spinner_label = ctk.CTkLabel(
@@ -806,6 +822,8 @@ class QueryTab(ctk.CTkFrame):
         self.current_question = ""
         self.current_contexts = []
         self.contexts_expanded = False
+        self.last_query_time = 0  # For debouncing
+        self.debounce_ms = 500  # Minimum time between queries
         
         # Title
         title = ctk.CTkLabel(self, text="Query Knowledge Base", font=heading())
@@ -909,11 +927,18 @@ class QueryTab(ctk.CTkFrame):
         self.contexts_box.pack_forget()  # Hidden by default
 
     def submit_query(self):
-        """Submit query (non-blocking)"""
+        """Submit query (non-blocking) with debouncing"""
         q = self.query_input.get("1.0", "end").strip()
         if not q:
             return
         
+        # Debounce: prevent rapid-fire queries
+        current_time = time.time() * 1000  # Convert to milliseconds
+        if current_time - self.last_query_time < self.debounce_ms:
+            self.app.toast.show("Please wait before submitting another query", "warn", ms=1500)
+            return
+        
+        self.last_query_time = current_time
         self.current_question = q
         self.query_btn.configure(state="disabled")
         self.copy_btn.configure(state="disabled")
@@ -2045,6 +2070,7 @@ Troubleshooting:
                         self.conn_status.set_status("error", "Invalid port number")
                         self.connect_btn.configure(state="normal", text="🔌 Connect")
                         self.log_output(f"Invalid port: {port_str}", is_error=True)
+                        self.app.toast.show(f"Invalid port: {port_str}", "error")
                     self.after(0, update_ui)
                     return
                 
@@ -2085,6 +2111,7 @@ Troubleshooting:
                         help_text = result.get("help", "")
                         
                         self.log_output(f"Connection failed: {error}", is_error=True)
+                        self.app.toast.show("CLO connection failed", "error")
                         
                         # If help text provided and help not visible, show it
                         if help_text and not self.help_visible:
@@ -2108,6 +2135,7 @@ Troubleshooting:
                     self.conn_status.set_status("error", "🔴 Error")
                     self.connect_btn.configure(state="normal", text="🔌 Connect")
                     self.log_output(f"Connection error: {str(e)}", is_error=True)
+                    self.app.toast.show("Connection error", "error")
                 
                 self.after(0, update_ui)
         
@@ -2163,7 +2191,7 @@ Troubleshooting:
                     else:
                         error = result.get("error", "Unknown error")
                         self.log_output(f"Import failed: {error}", is_error=True)
-                        self.app.toast.show(f"Import failed", "error")
+                        self.app.toast.show("Import failed", "error")
                 
                 self.after(0, update_ui)
                 
@@ -2174,6 +2202,7 @@ Troubleshooting:
                     self.app.active_operations -= 1
                     self.import_btn.configure(state="normal")
                     self.log_output(f"Import error: {str(e)}", is_error=True)
+                    self.app.toast.show("Import error", "error")
                 
                 self.after(0, update_ui)
         
@@ -2216,9 +2245,11 @@ Troubleshooting:
                     
                     if result["ok"]:
                         self.log_output(f"Exported to: {os.path.basename(file_path)}")
+                        self.app.toast.show(f"Exported {os.path.basename(file_path)}", "success")
                     else:
                         error = result.get("error", "Unknown error")
                         self.log_output(f"Export failed: {error}", is_error=True)
+                        self.app.toast.show("Export failed", "error")
                 
                 self.after(0, update_ui)
                 
@@ -2229,6 +2260,7 @@ Troubleshooting:
                     self.app.active_operations -= 1
                     self.export_btn.configure(state="normal")
                     self.log_output(f"Export error: {str(e)}", is_error=True)
+                    self.app.toast.show("Export error", "error")
                 
                 self.after(0, update_ui)
         
@@ -2240,9 +2272,11 @@ Troubleshooting:
             steps = int(self.sim_steps.get())
             if steps <= 0:
                 self.log_output("Simulation steps must be positive", is_error=True)
+                self.app.toast.show("Steps must be positive", "error")
                 return
         except ValueError:
             self.log_output("Invalid simulation steps value", is_error=True)
+            self.app.toast.show("Invalid steps value", "error")
             return
         
         self.sim_btn.configure(state="disabled")
@@ -2258,9 +2292,11 @@ Troubleshooting:
                     
                     if result["ok"]:
                         self.log_output(f"Simulation completed: {steps} steps")
+                        self.app.toast.show(f"Simulation complete ({steps} steps)", "success")
                     else:
                         error = result.get("error", "Unknown error")
                         self.log_output(f"Simulation failed: {error}", is_error=True)
+                        self.app.toast.show("Simulation failed", "error")
                 
                 self.after(0, update_ui)
                 
@@ -2271,6 +2307,7 @@ Troubleshooting:
                     self.app.active_operations -= 1
                     self.sim_btn.configure(state="normal")
                     self.log_output(f"Simulation error: {str(e)}", is_error=True)
+                    self.app.toast.show("Simulation error", "error")
                 
                 self.after(0, update_ui)
         
@@ -2301,10 +2338,12 @@ Troubleshooting:
                     if result["ok"]:
                         self.log_output(f"Screenshot saved: {filename}")
                         self.screenshot_preview.configure(text=f"📸 {filename}")
+                        self.app.toast.show("Screenshot saved", "success")
                         log(f"UI: CLO screenshot saved to {filepath}", "UI")
                     else:
                         error = result.get("error", "Unknown error")
                         self.log_output(f"Screenshot failed: {error}", is_error=True)
+                        self.app.toast.show("Screenshot failed", "error")
                 
                 self.after(0, update_ui)
                 
@@ -2315,6 +2354,7 @@ Troubleshooting:
                     self.app.active_operations -= 1
                     self.screenshot_btn.configure(state="normal")
                     self.log_output(f"Screenshot error: {str(e)}", is_error=True)
+                    self.app.toast.show("Screenshot error", "error")
                 
                 self.after(0, update_ui)
         

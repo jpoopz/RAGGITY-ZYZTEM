@@ -1,0 +1,40 @@
+RAGGITY ZYZTEM 2.0 Documentation
+
+RAGGITY ZYZTEM is a local-first RAG (Retrieval Augmented Generation) system 
+combining powerful document processing, a beautiful dark-themed desktop interface, 
+and direct CLO 3D garment design control.
+
+Vector Stores:
+The system supports two vector database backends:
+- FAISS: Fast and lightweight, in-memory with file persistence (default)
+- ChromaDB: Feature-rich persistent storage for large-scale deployments
+
+LLM Providers:
+RAGGITY supports multiple LLM providers:
+- Ollama: Local LLM inference (recommended, default)
+- OpenAI: Cloud-based GPT models (requires API key)
+
+Quick Start:
+To start the system on Windows:
+1. Run start_api.bat to launch the API server
+2. Run run_ui.bat to open the desktop interface
+
+The system will start at http://localhost:8000 with a CustomTkinter UI.
+
+Features:
+- Document ingestion from PDF, TXT, DOCX, and Markdown files
+- Paragraph-aware chunking with overlapping windows
+- Real-time system monitoring with CPU/RAM/GPU metrics
+- Toast notifications for user feedback
+- Streaming query responses
+- CLO 3D integration for garment design
+
+Configuration:
+Settings can be configured via:
+1. config.yaml file in the project root
+2. Environment variables (take precedence over YAML)
+3. UI Settings tab for runtime changes
+
+The system uses FAISS for vector search by default, with optional ChromaDB support
+for users who need persistent, feature-rich storage capabilities.
+

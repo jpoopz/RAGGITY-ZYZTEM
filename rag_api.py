@@ -3,11 +3,12 @@ FastAPI RAG API Server
 Exposes RAG system as HTTP endpoints for document ingestion and querying
 """
 
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
 import time
+import threading
 from typing import Optional
 from pydantic import BaseModel
 
@@ -42,12 +43,52 @@ except ImportError as e:
 
 log = get_logger("rag_api")
 
+# Global lock for index writes
+_index_lock = threading.Lock()
+
+# API authentication key (optional)
+API_KEY = os.getenv("API_KEY", "")
+
+# CLOUD_KEY for bridge/settings endpoints
+CLOUD_KEY = os.getenv("CLOUD_KEY", "")
+
 app = FastAPI(title="RAGGITY ZYZTEM API")
 
-# CORS middleware
+
+def verify_auth(authorization: Optional[str] = Header(None)):
+    """
+    Verify Bearer token authentication for sensitive endpoints.
+    Only enforced if API_KEY or CLOUD_KEY is set.
+    """
+    # If no key is set, allow access (development mode)
+    if not API_KEY and not CLOUD_KEY:
+        return True
+    
+    # Check authorization header
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    
+    # Parse Bearer token
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization header format. Use: Bearer <token>")
+    
+    token = parts[1]
+    
+    # Verify token matches API_KEY or CLOUD_KEY
+    if token != API_KEY and token != CLOUD_KEY:
+        raise HTTPException(status_code=403, detail="Invalid authentication token")
+    
+    return True
+
+# Get CORS origins from environment or use secure defaults
+cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost,http://127.0.0.1,http://localhost:8000,http://127.0.0.1:8000")
+cors_origins = [origin.strip() for origin in cors_origins_str.split(",")]
+
+# CORS middleware - tightened to localhost by default
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_headers=["*"],
     allow_methods=["*"]
 )
