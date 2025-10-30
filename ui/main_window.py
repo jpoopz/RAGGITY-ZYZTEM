@@ -16,9 +16,11 @@ BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from ui.theme import (
-    apply_theme, heading, subheading, body, mono, Card, StatusLabel,
-    ACCENT, TEXT, TEXT_SECONDARY, STATUS_OK, STATUS_WARN, STATUS_ERROR, DARK_BG
+    apply_theme, heading, subheading, body, mono, small, Card, StatusLabel,
+    ACCENT, TEXT, TEXT_SECONDARY, STATUS_OK, STATUS_WARN, STATUS_ERROR, STATUS_WARNING,
+    STATUS_INFO, DARK_BG, CARD_BG
 )
+from ui.toast import ToastManager
 from core.gpu import get_gpu_status
 from core.config import CFG
 from logger import log
@@ -43,6 +45,9 @@ class RaggityUI(ctk.CTk):
         
         # Network operation counter for spinner
         self.active_operations = 0
+        
+        # Toast notification manager
+        self.toast = ToastManager(self)
         
         # Create layout
         self.create_app_bar()
@@ -961,6 +966,7 @@ class QueryTab(ctk.CTkFrame):
                         self.copy_btn.configure(state="normal")
                         self.export_btn.configure(state="normal")
                         
+                        self.app.toast.show(f"Query complete ({len(contexts)} contexts)", "success")
                         log(f"UI: Query successful: {q[:100]}", "UI")
                     else:
                         self.answer_box.delete("1.0", "end")
@@ -1012,6 +1018,7 @@ class QueryTab(ctk.CTkFrame):
             # Reset after 2 seconds
             self.after(2000, lambda: self.copy_btn.configure(text=original_text))
             
+            self.app.toast.show("Answer copied to clipboard", "success", ms=1500)
             log("UI: Answer copied to clipboard", "UI")
         except Exception as e:
             log(f"UI: Copy failed: {e}", "UI")
@@ -1055,6 +1062,7 @@ class QueryTab(ctk.CTkFrame):
             
             # Log with clickable path
             self.status.set_status("ok", f"✓ Saved to exports/{filename}")
+            self.app.toast.show(f"Exported to {filename}", "success")
             log(f"UI: Exported to {filepath}", "UI")
             
         except Exception as e:
@@ -1277,6 +1285,7 @@ class SystemTab(ctk.CTkFrame):
             self.after(2000, lambda: self.snapshot_btn.configure(text=original_text))
             
             self.status.set_status("ok", f"✓ Snapshot saved: {filename}")
+            self.app.toast.show(f"Snapshot saved", "success")
             log(f"UI: System snapshot saved to {filepath}", "UI")
             
         except Exception as e:
@@ -1664,6 +1673,50 @@ class CLO3DTab(ctk.CTkFrame):
         
         ctk.CTkLabel(conn_card, text="Connection", font=subheading()).pack(pady=10, padx=20, anchor="w")
         
+        # Help/Instructions panel (collapsible)
+        help_frame = ctk.CTkFrame(conn_card, fg_color=CARD_BG, corner_radius=8)
+        help_frame.pack(padx=20, pady=5, fill="x")
+        
+        self.help_toggle_btn = ctk.CTkButton(
+            help_frame,
+            text="ℹ️ Show Setup Instructions",
+            command=self.toggle_help,
+            font=small(),
+            fg_color="transparent",
+            hover_color="#1a1a1e",
+            height=25
+        )
+        self.help_toggle_btn.pack(pady=5)
+        
+        self.help_content = ctk.CTkTextbox(help_frame, font=small(), height=0, wrap="word")
+        self.help_content.pack_forget()  # Hidden by default
+        
+        help_text = """Quick Start Checklist:
+
+☐ 1. Launch CLO 3D application
+
+☐ 2. In CLO: File > Script > Run Script...
+
+☐ 3. Navigate to: modules/clo_companion/clo_bridge_listener.py
+
+☐ 4. Click "Run" - you should see:
+      "CLO Bridge listening on 127.0.0.1:51235"
+
+☐ 5. Return here and click "Connect"
+
+Note: The bridge listener must be running in CLO for the
+connection to work. Keep CLO's script console open to
+see listener status and command logs.
+
+Troubleshooting:
+- Port already in use? Set CLO_PORT env variable
+- Firewall blocking? Allow localhost connections
+- Script errors? Check CLO's Python console output
+"""
+        self.help_content.insert("1.0", help_text)
+        self.help_content.configure(state="disabled")
+        self.help_visible = False
+        
         # Host and port fields
         config_frame = ctk.CTkFrame(conn_card, fg_color="transparent")
         config_frame.pack(pady=5, padx=20, fill="x")
@@ -1791,6 +1844,19 @@ class CLO3DTab(ctk.CTkFrame):
         self.output.insert("end", f"[{timestamp}] {prefix} {message}\n")
         self.output.see("end")
 
+    def toggle_help(self):
+        """Toggle help instructions visibility"""
+        if self.help_visible:
+            # Hide help
+            self.help_content.pack_forget()
+            self.help_toggle_btn.configure(text="ℹ️ Show Setup Instructions")
+            self.help_visible = False
+        else:
+            # Show help
+            self.help_content.pack(fill="x", padx=10, pady=5)
+            self.help_toggle_btn.configure(text="ℹ️ Hide Setup Instructions")
+            self.help_visible = True
+
     def toggle_connection(self):
         """Toggle connection to CLO bridge"""
         if self.connected:
@@ -1828,6 +1894,7 @@ class CLO3DTab(ctk.CTkFrame):
                     
                     if result["ok"]:
                         self.connected = True
+                        attempts = result.get("data", {}).get("attempts", 1)
                         self.conn_status.set_status("ok", f"🟢 Connected to {host}:{port}")
                         self.connect_btn.configure(text="🔌 Disconnect", fg_color=STATUS_WARNING)
                         
@@ -1837,14 +1904,34 @@ class CLO3DTab(ctk.CTkFrame):
                         self.sim_btn.configure(state="normal")
                         self.screenshot_btn.configure(state="normal")
                         
-                        self.log_output(f"Connected to CLO bridge at {host}:{port}")
-                        log(f"UI: Connected to CLO bridge at {host}:{port}", "UI")
+                        msg = f"Connected to CLO bridge at {host}:{port}"
+                        if attempts > 1:
+                            msg += f" (attempt {attempts})"
+                        self.log_output(msg)
+                        log(f"UI: {msg}", "UI")
+                        
+                        # Auto-hide help on successful connection
+                        if self.help_visible:
+                            self.toggle_help()
                     else:
                         self.connected = False
                         self.conn_status.set_status("error", "🔴 Connection failed")
                         self.connect_btn.configure(state="normal", text="🔌 Connect")
+                        
                         error = result.get("error", "Unknown error")
+                        help_text = result.get("help", "")
+                        
                         self.log_output(f"Connection failed: {error}", is_error=True)
+                        
+                        # If help text provided and help not visible, show it
+                        if help_text and not self.help_visible:
+                            # Update help content with specific troubleshooting
+                            self.help_content.configure(state="normal")
+                            current_help = self.help_content.get("1.0", "end")
+                            self.help_content.delete("1.0", "end")
+                            self.help_content.insert("1.0", f"ERROR: {error}\n\n{help_text}\n\n{'='*50}\n\n{current_help}")
+                            self.help_content.configure(state="disabled")
+                            self.toggle_help()  # Show help
                     
                     self.connect_btn.configure(state="normal")
                 
@@ -1909,9 +1996,11 @@ class CLO3DTab(ctk.CTkFrame):
                     
                     if result["ok"]:
                         self.log_output(f"Imported: {os.path.basename(file_path)}")
+                        self.app.toast.show(f"Imported {os.path.basename(file_path)}", "success")
                     else:
                         error = result.get("error", "Unknown error")
                         self.log_output(f"Import failed: {error}", is_error=True)
+                        self.app.toast.show(f"Import failed", "error")
                 
                 self.after(0, update_ui)
                 
