@@ -20,11 +20,14 @@ sys.path.append(BASE_DIR)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from modules.academic_rag.query_llm import answer, retrieve_local_context, save_conversation
-from logger import log, log_exception
+from logger import get_logger
 from core.config_manager import get_module_config, get_suite_config
 from core.auth_helper import require_auth_token
 import subprocess
 from datetime import datetime
+
+# Initialize logger
+log = get_logger("academic_rag_api")
 
 app = Flask(__name__)
 
@@ -57,22 +60,39 @@ def query():
     """Main query endpoint"""
     try:
         data = request.json
+        if not data:
+            log.error("No JSON data provided in request")
+            return jsonify({"error": "No JSON data provided"}), 400
+            
         query_text = data.get('query', '')
         use_web = data.get('use_web', False)
         reasoning_mode = data.get('reasoning_mode', 'Analytical')
         
         if not query_text:
+            log.warning("Query request missing query text")
             return jsonify({"error": "Query is required"}), 400
         
+        log.info(f"Processing query: {query_text[:100]}...")
+        
         # Get response from RAG system
-        response, sources, web_note = answer(
-            query_text,
-            use_web_fallback=use_web,
-            reasoning_mode=reasoning_mode
-        )
+        try:
+            response, sources, web_note = answer(
+                query_text,
+                use_web_fallback=use_web,
+                reasoning_mode=reasoning_mode
+            )
+        except Exception as e:
+            log.error(f"Error generating answer: {e}")
+            return jsonify({"error": f"Failed to generate answer: {str(e)}"}), 500
         
         # Save conversation
-        conversation_path = save_conversation(query_text, response, sources)
+        try:
+            conversation_path = save_conversation(query_text, response, sources)
+        except Exception as e:
+            log.warning(f"Failed to save conversation: {e}")
+            conversation_path = None
+        
+        log.info(f"Query completed successfully, {len(sources)} sources")
         
         return jsonify({
             "response": response,
@@ -82,6 +102,7 @@ def query():
         })
         
     except Exception as e:
+        log.error(f"Unexpected error in query endpoint: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/retrieve', methods=['POST'])
@@ -89,13 +110,25 @@ def retrieve():
     """Retrieval-only endpoint (no LLM call)"""
     try:
         data = request.json
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+            
         query_text = data.get('query', '')
         n_results = data.get('n_results', 5)
         
         if not query_text:
+            log.warning("Retrieve request missing query text")
             return jsonify({"error": "Query is required"}), 400
         
-        contexts, distance, sources = retrieve_local_context(query_text, n_results)
+        log.info(f"Retrieving contexts for: {query_text[:100]}...")
+        
+        try:
+            contexts, distance, sources = retrieve_local_context(query_text, n_results)
+        except Exception as e:
+            log.error(f"Error during retrieval: {e}")
+            return jsonify({"error": f"Retrieval failed: {str(e)}"}), 500
+        
+        log.info(f"Retrieved {len(contexts)} contexts")
         
         return jsonify({
             "contexts": contexts,
@@ -104,28 +137,44 @@ def retrieve():
         })
         
     except Exception as e:
+        log.error(f"Unexpected error in retrieve endpoint: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/reindex', methods=['POST'])
 def trigger_index():
     """Trigger document re-indexing"""
     try:
+        log.info("Starting document re-indexing")
         script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index_documents.py")
-        result = subprocess.run(
-            ["python", script_path],
-            capture_output=True,
-            text=True,
-            timeout=600,
-            cwd=os.path.dirname(__file__)
-        )
+        
+        if not os.path.exists(script_path):
+            log.error(f"Index script not found: {script_path}")
+            return jsonify({"error": "Index script not found"}), 500
+        
+        try:
+            result = subprocess.run(
+                ["python", script_path],
+                capture_output=True,
+                text=True,
+                timeout=600,
+                cwd=os.path.dirname(__file__)
+            )
+        except subprocess.TimeoutExpired:
+            log.error("Indexing timeout after 600 seconds")
+            return jsonify({"error": "Indexing timeout"}), 500
+        except Exception as e:
+            log.error(f"Error running index script: {e}")
+            return jsonify({"error": f"Failed to run indexing: {str(e)}"}), 500
         
         if result.returncode == 0:
+            log.info("Indexing completed successfully")
             return jsonify({
                 "status": "success",
                 "message": "Indexing completed",
                 "output": result.stdout
             })
         else:
+            log.error(f"Indexing failed with code {result.returncode}")
             return jsonify({
                 "status": "error",
                 "message": "Indexing failed",
@@ -133,6 +182,7 @@ def trigger_index():
             }), 500
             
     except Exception as e:
+        log.error(f"Unexpected error in reindex endpoint: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/index', methods=['POST'])
@@ -181,23 +231,27 @@ def summarize():
         }
         length_instruction = length_prompts.get(summary_length, length_prompts['medium'])
         
-        # Get LLM summary
-        prompt = f"""Summarize the following text. {length_instruction}
+        # Get LLM summary via connector
+        try:
+            from core.llm_connector import LLMConnector
+            llm = LLMConnector()
+            
+            prompt = f"""Summarize the following text. {length_instruction}
 
 TEXT:
 {text[:5000]}
 
 SUMMARY:"""
-        
-        # Call Ollama directly
-        result = subprocess.run(
-            ["ollama", "run", "llama3.2", prompt],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            encoding="utf-8"
-        )
-        summary = result.stdout.strip() if result.returncode == 0 else "Error generating summary"
+            
+            messages = [
+                {"role": "system", "content": "You are a helpful assistant that creates concise summaries."},
+                {"role": "user", "content": prompt}
+            ]
+            
+            summary = llm.chat(messages)
+        except Exception as e:
+            log_exception("API", e, "Error generating summary")
+            summary = "Error generating summary"
         
         return jsonify({
             "summary": summary,
@@ -215,15 +269,20 @@ def context_preview():
         from core.context_graph import get_context_graph
         
         query = request.args.get('query', '')
-        graph = get_context_graph(user="julian")
-        preview = graph.context_preview(query=query if query else None)
+        
+        try:
+            graph = get_context_graph(user="julian")
+            preview = graph.context_preview(query=query if query else None)
+        except Exception as e:
+            log.error(f"Error building context preview: {e}")
+            return jsonify({"error": f"Context graph error: {str(e)}"}), 500
         
         return jsonify({
             "preview": preview,
             "timestamp": datetime.now().isoformat()
         })
     except Exception as e:
-        log_exception("API", e, "Error in context preview")
+        log.error(f"Error in context preview endpoint: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/plan_essay', methods=['POST'])
@@ -269,15 +328,20 @@ Format with clear sections and bullet points. Include citations in format [Sourc
 
 ESSAY PLAN:"""
         
-        # Call Ollama directly
-        result = subprocess.run(
-            ["ollama", "run", "llama3.2", prompt],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            encoding="utf-8"
-        )
-        plan = result.stdout.strip() if result.returncode == 0 else "Error generating essay plan"
+        # Call LLM via connector
+        try:
+            from core.llm_connector import LLMConnector
+            llm = LLMConnector()
+            
+            messages = [
+                {"role": "system", "content": "You are an academic writing assistant."},
+                {"role": "user", "content": prompt}
+            ]
+            
+            plan = llm.chat(messages)
+        except Exception as e:
+            log_exception("API", e, "Error generating essay plan")
+            plan = "Error generating essay plan"
         
         return jsonify({
             "plan": plan,
