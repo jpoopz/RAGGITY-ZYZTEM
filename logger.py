@@ -147,3 +147,39 @@ def get_recent_logs(lines=50, category=None):
     except:
         return []
 
+
+class Logger:
+    """Logger class with category-based logging"""
+    
+    def __init__(self, category: str):
+        self.category = category
+    
+    def info(self, message: str):
+        """Log info message"""
+        log(message, self.category)
+    
+    def warning(self, message: str):
+        """Log warning message"""
+        log(message, self.category)
+    
+    def error(self, message: str):
+        """Log error message"""
+        log(message, self.category)
+    
+    def debug(self, message: str):
+        """Log debug message"""
+        log(message, self.category)
+
+
+def get_logger(category: str = "INFO") -> Logger:
+    """
+    Get a logger instance for the specified category
+    
+    Args:
+        category: Category tag (API, INDEX, GUI, LLM, etc.)
+    
+    Returns:
+        Logger instance
+    """
+    return Logger(category)
+

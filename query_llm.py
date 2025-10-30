@@ -4,7 +4,6 @@ Searches local knowledge base, adds citations, and optionally uses web fallback
 """
 
 import chromadb
-import subprocess
 import json
 import sys
 import os
@@ -29,6 +28,14 @@ except ImportError:
         import traceback
         print(f"[{category}] {context}: {exception}", file=sys.stderr)
         traceback.print_exc()
+
+# Import LLM connector
+try:
+    from core.llm_connector import LLMConnector
+    llm_connector = LLMConnector()
+except ImportError:
+    log("Warning: LLMConnector not available, some features may be limited", "LLM")
+    llm_connector = None
 
 # Configuration
 VAULT_PATH = os.path.expanduser(r"C:\Users\Julian Poopat\Documents\Obsidian")
@@ -98,7 +105,7 @@ def retrieve_local_context(query, n_results=5):
 
 def call_local_llm(prompt, max_retries=3, retry_delay=2, use_router=True):
     """
-    Call local Ollama LLM with retry logic (or route through Dynamic LLM Router)
+    Call LLM via LLMConnector with retry logic
     
     Args:
         prompt: The prompt to send to the LLM
@@ -128,98 +135,46 @@ def call_local_llm(prompt, max_retries=3, retry_delay=2, use_router=True):
                 log(f"LLM request via router (provider: {provider}, tokens: {result.get('tokens', 0)})", "LLM")
                 return content
             else:
-                log("Router unavailable, falling back to direct Ollama", "LLM", level="WARNING")
+                log("Router unavailable, falling back to LLMConnector", "LLM")
         except Exception as e:
-            log(f"Router call failed, falling back to direct Ollama: {e}", "LLM", level="WARNING")
+            log(f"Router call failed, falling back to LLMConnector: {e}", "LLM")
     
-    # Fallback to direct Ollama call
-    last_error = None
-    
-    for attempt in range(1, max_retries + 1):
-        try:
-            cmd = ["ollama", "run", OLLAMA_MODEL, prompt]
-            log(f"Calling Ollama (attempt {attempt}/{max_retries})...", "LLM")
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                encoding="utf-8"
-            )
-            
-            if result.returncode != 0:
-                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
-                log(f"Ollama error (code {result.returncode}): {error_msg}", "LLM")
+    # Use LLMConnector (supports both Ollama and OpenAI)
+    if llm_connector:
+        for attempt in range(1, max_retries + 1):
+            try:
+                log(f"Calling LLM via connector (attempt {attempt}/{max_retries})...", "LLM")
                 
-                # Check if it's a connection error (retry-able)
-                is_connection_error = (
-                    "connection" in error_msg.lower() or 
-                    "refused" in error_msg.lower() or
-                    "connection refused" in error_msg.lower()
-                )
+                messages = [
+                    {"role": "system", "content": "You are a helpful AI assistant."},
+                    {"role": "user", "content": prompt}
+                ]
                 
-                # Check if it's a model error (not retry-able)
-                is_model_error = "model" in error_msg.lower() and "not found" in error_msg.lower()
+                response = llm_connector.chat(messages)
                 
-                if is_model_error:
-                    error_text = f"Error: Model {OLLAMA_MODEL} not found. Please pull it with: ollama pull {OLLAMA_MODEL}"
-                    log(error_text, "LLM")
-                    return error_text
-                elif is_connection_error and attempt < max_retries:
-                    last_error = error_msg
-                    log(f"Connection error, retrying in {retry_delay} seconds...", "LLM")
-                    time.sleep(retry_delay)
-                    continue
-                else:
-                    # Non-retryable error or last attempt
-                    if is_connection_error:
-                        error_text = "Error: Cannot connect to Ollama. Please ensure Ollama is running (ollama serve)."
+                if response.startswith("Error:"):
+                    if attempt < max_retries:
+                        log(f"LLM error, retrying in {retry_delay} seconds...", "LLM")
+                        time.sleep(retry_delay)
+                        continue
                     else:
-                        error_text = f"Error: Could not get response from LLM. {error_msg}"
-                    log(error_text, "LLM")
-                    return error_text
-            
-            response = result.stdout.strip()
-            if not response:
+                        return response
+                
+                log(f"LLM call successful (response length: {len(response)} chars)", "LLM")
+                return response
+                
+            except Exception as e:
                 if attempt < max_retries:
-                    log(f"Empty response, retrying in {retry_delay} seconds...", "LLM")
+                    log(f"Error on attempt {attempt}, retrying: {e}", "LLM")
                     time.sleep(retry_delay)
                     continue
                 else:
-                    log("Ollama returned empty response", "LLM")
-                    return "Error: Received empty response from LLM. Please try again."
-            
-            log(f"LLM call successful (response length: {len(response)} chars)", "LLM")
-            return response
-            
-        except subprocess.TimeoutExpired:
-            if attempt < max_retries:
-                log(f"Timeout on attempt {attempt}, retrying...", "LLM")
-                time.sleep(retry_delay)
-                continue
-            else:
-                log("Ollama call timed out after 120 seconds", "LLM")
-                return "Error: LLM request timed out. The query may be too complex. Please try a shorter query."
-                
-        except FileNotFoundError:
-            error_text = "Error: Ollama not found in PATH. Please ensure Ollama is installed and accessible."
-            log(error_text, "LLM")
-            return error_text
-            
-        except Exception as e:
-            if attempt < max_retries:
-                log_exception("LLM", e, f"Unexpected error on attempt {attempt}, retrying...")
-                time.sleep(retry_delay)
-                continue
-            else:
-                log_exception("LLM", e, "Unexpected error calling Ollama")
-                return f"Error: Unexpected error calling LLM: {str(e)}"
-    
-    # All retries exhausted
-    if last_error:
-        return f"Error: Failed after {max_retries} attempts. Last error: {last_error}"
-    return "Error: Failed to get response from LLM after multiple attempts."
+                    log_exception("LLM", e, "Error calling LLM via connector")
+                    return f"Error: {str(e)}"
+        
+        return "Error: Failed to get response from LLM after multiple attempts."
+    else:
+        return "Error: LLMConnector not available. Please check configuration."
 
 def web_fallback(query):
     """Trigger web search fallback via Cursor browser or manual note"""
