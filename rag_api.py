@@ -13,6 +13,17 @@ from pydantic import BaseModel
 from core.rag_engine import RAGEngine
 from core.paths import ensure_dirs, get_data_dir
 from core.config import CFG
+from logger import get_logger
+
+# Import troubleshooter
+try:
+    from modules.smart_troubleshooter.troubleshoot import troubleshoot
+    TROUBLESHOOTER_AVAILABLE = True
+except ImportError as e:
+    TROUBLESHOOTER_AVAILABLE = False
+    print(f"Troubleshooter not available: {e}")
+
+log = get_logger("rag_api")
 
 app = FastAPI(title="RAGGITY ZYZTEM API")
 
@@ -102,6 +113,46 @@ def query(q: str, k: int = 5):
     return result
 
 
+@app.get("/troubleshoot")
+def troubleshoot_endpoint(hours: int = 24):
+    """
+    Analyze logs and provide diagnostic report with fix recommendations
+    
+    Args:
+        hours: Number of hours to look back in logs (default: 24)
+    
+    Returns:
+        Dictionary with:
+            - issues: List of detected issues
+            - recommendations: List of automated fix suggestions
+            - summary: Summary statistics
+            - timestamp: When analysis was performed
+    """
+    if not TROUBLESHOOTER_AVAILABLE:
+        log.error("Troubleshooter module not available")
+        raise HTTPException(
+            status_code=503,
+            detail="Troubleshooter module not available"
+        )
+    
+    try:
+        log.info(f"Troubleshoot request received (hours={hours})")
+        
+        # Run troubleshooter
+        result = troubleshoot(hours=hours)
+        
+        log.info(f"Troubleshoot complete: {result['summary']['total_issues']} issues found")
+        
+        return result
+        
+    except Exception as e:
+        log.error(f"Error in troubleshoot endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Troubleshoot failed: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting RAGGITY ZYZTEM API...")
@@ -111,6 +162,8 @@ if __name__ == "__main__":
     print("   POST /ingest-file - Upload and ingest a file")
     print("   POST /ingest-path - Ingest from filesystem path")
     print("   GET  /query?q=<question>&k=<num> - Query the RAG system")
+    print("   GET  /troubleshoot?hours=<hours> - Diagnostic report with fix recommendations")
+    print(f"\n🔧 Troubleshooter: {'Available' if TROUBLESHOOTER_AVAILABLE else 'Not Available'}")
     print("\nPress Ctrl+C to stop\n")
     
     uvicorn.run(app, host="0.0.0.0", port=8000)
