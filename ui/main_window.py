@@ -790,11 +790,15 @@ class IngestTab(ctk.CTkFrame):
 
 
 class QueryTab(ctk.CTkFrame):
-    """Query interface tab"""
+    """Query interface with rich answer card and export"""
     
     def __init__(self, parent, app):
         super().__init__(parent, fg_color=DARK_BG)
         self.app = app
+        self.current_answer = ""
+        self.current_question = ""
+        self.current_contexts = []
+        self.contexts_expanded = False
         
         # Title
         title = ctk.CTkLabel(self, text="Query Knowledge Base", font=heading())
@@ -802,24 +806,34 @@ class QueryTab(ctk.CTkFrame):
         
         # Query card
         query_card = Card(self)
-        query_card.pack(padx=20, pady=10, fill="both", expand=True)
+        query_card.pack(padx=20, pady=10, fill="x")
         
         # Query input
-        ctk.CTkLabel(query_card, text="Ask a Question", font=subheading()).pack(pady=10, padx=20)
+        ctk.CTkLabel(query_card, text="Ask a Question", font=subheading()).pack(pady=10, padx=20, anchor="w")
         
-        self.query_entry = ctk.CTkEntry(
+        # Multi-line text box for query
+        self.query_input = ctk.CTkTextbox(
             query_card,
-            placeholder_text="Enter your question...",
-            height=40,
-            font=body()
+            height=80,
+            font=body(),
+            wrap="word"
         )
-        self.query_entry.pack(padx=20, pady=10, fill="x")
-        self.query_entry.bind("<Return>", lambda e: self.submit_query())
+        self.query_input.pack(padx=20, pady=10, fill="x")
+        self.query_input.insert("1.0", "")
+        self.query_input.bind("<Control-Return>", lambda e: self.submit_query())
         
-        # Query button
+        # Hint text
+        ctk.CTkLabel(
+            query_card,
+            text="Tip: Press Ctrl+Enter to submit",
+            font=small(),
+            text_color=TEXT_SECONDARY
+        ).pack(padx=20, anchor="w")
+        
+        # Submit button
         self.query_btn = ctk.CTkButton(
             query_card,
-            text="Submit Query",
+            text="🔍 Submit Query",
             command=self.submit_query,
             height=40,
             font=subheading(),
@@ -828,24 +842,81 @@ class QueryTab(ctk.CTkFrame):
         self.query_btn.pack(pady=10)
         
         # Status
-        self.status = StatusLabel(query_card, status="info", text="")
+        self.status = StatusLabel(query_card, status="info", text="Ready")
         self.status.pack(pady=5)
         
-        # Answer display
-        self.answer_box = ctk.CTkTextbox(query_card, font=body(), wrap="word")
-        self.answer_box.pack(fill="both", expand=True, padx=20, pady=10)
-        self.answer_box.insert("1.0", "Enter a question to get started.\n")
+        # Answer card
+        answer_card = Card(self)
+        answer_card.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        # Answer header with actions
+        header_frame = ctk.CTkFrame(answer_card, fg_color="transparent")
+        header_frame.pack(fill="x", padx=20, pady=10)
+        
+        ctk.CTkLabel(header_frame, text="Answer", font=subheading()).pack(side="left")
+        
+        # Export buttons
+        self.copy_btn = ctk.CTkButton(
+            header_frame,
+            text="📋 Copy",
+            command=self.copy_answer,
+            width=100,
+            height=30,
+            font=body(),
+            state="disabled"
+        )
+        self.copy_btn.pack(side="right", padx=5)
+        
+        self.export_btn = ctk.CTkButton(
+            header_frame,
+            text="💾 Export MD",
+            command=self.export_to_markdown,
+            width=120,
+            height=30,
+            font=body(),
+            state="disabled"
+        )
+        self.export_btn.pack(side="right", padx=5)
+        
+        # Answer text
+        self.answer_box = ctk.CTkTextbox(answer_card, font=body(), wrap="word", height=200)
+        self.answer_box.pack(fill="x", padx=20, pady=5)
+        self.answer_box.insert("1.0", "Your answer will appear here.\n")
+        
+        # Contexts section
+        self.contexts_toggle_btn = ctk.CTkButton(
+            answer_card,
+            text="▼ Show Contexts (0)",
+            command=self.toggle_contexts,
+            height=30,
+            font=body(),
+            fg_color="transparent",
+            hover_color="#1a1a1e",
+            state="disabled"
+        )
+        self.contexts_toggle_btn.pack(pady=5)
+        
+        # Contexts display (initially hidden)
+        self.contexts_box = ctk.CTkTextbox(answer_card, font=mono(), wrap="word", height=0)
+        self.contexts_box.pack(fill="both", expand=True, padx=20, pady=5)
+        self.contexts_box.pack_forget()  # Hidden by default
 
     def submit_query(self):
         """Submit query (non-blocking)"""
-        q = self.query_entry.get().strip()
+        q = self.query_input.get("1.0", "end").strip()
         if not q:
             return
         
+        self.current_question = q
         self.query_btn.configure(state="disabled")
-        self.status.set_status("info", "⏳ Querying...")
+        self.copy_btn.configure(state="disabled")
+        self.export_btn.configure(state="disabled")
+        self.contexts_toggle_btn.configure(state="disabled")
+        
+        self.status.set_status("info", "💭 Thinking...")
         self.answer_box.delete("1.0", "end")
-        self.answer_box.insert("1.0", "⏳ Fetching answer...\n")
+        self.answer_box.insert("1.0", "⏳ Processing your question...\n\nThis may take a moment.")
+        
         self.app.active_operations += 1
         
         def run():
@@ -858,23 +929,43 @@ class QueryTab(ctk.CTkFrame):
                 
                 def update_ui():
                     self.app.active_operations -= 1
+                    
                     if r.ok:
                         ans = r.json()
-                        self.answer_box.delete("1.0", "end")
-                        self.answer_box.insert("end", f"Q: {q}\n\n", "question")
-                        self.answer_box.insert("end", f"A: {ans['answer']}\n\n", "answer")
-                        
+                        answer_text = ans.get('answer', 'No answer')
                         contexts = ans.get("contexts", [])
-                        if contexts:
-                            self.answer_box.insert("end", "─" * 50 + "\nContexts:\n\n")
-                            for i, ctx in enumerate(contexts[:3], 1):
-                                self.answer_box.insert("end", f"[{i}] {ctx[:250]}...\n\n")
                         
-                        self.status.set_status("ok", f"✓ Found {len(contexts)} contexts")
+                        # Store for export
+                        self.current_answer = answer_text
+                        self.current_contexts = contexts
+                        
+                        # Display answer
+                        self.answer_box.delete("1.0", "end")
+                        self.answer_box.insert("end", answer_text)
+                        
+                        # Update contexts button
+                        self.contexts_toggle_btn.configure(
+                            text=f"▼ Show Contexts ({len(contexts)})",
+                            state="normal"
+                        )
+                        
+                        # Populate contexts (hidden)
+                        self.contexts_box.delete("1.0", "end")
+                        for i, ctx in enumerate(contexts, 1):
+                            self.contexts_box.insert("end", f"─" * 50 + f"\nContext {i}:\n\n")
+                            self.contexts_box.insert("end", f"{ctx[:400]}...\n\n")
+                        
+                        self.status.set_status("ok", f"✓ Answer ready ({len(contexts)} contexts)")
+                        
+                        # Enable export buttons
+                        self.copy_btn.configure(state="normal")
+                        self.export_btn.configure(state="normal")
+                        
+                        log(f"UI: Query successful: {q[:100]}", "UI")
                     else:
                         self.answer_box.delete("1.0", "end")
-                        self.answer_box.insert("end", f"Error {r.status_code}: {r.text}\n")
-                        self.status.set_status("error", "✗ Error")
+                        self.answer_box.insert("end", f"Error {r.status_code}\n\n{r.text}")
+                        self.status.set_status("error", "✗ Query Failed")
                     
                     self.query_btn.configure(state="normal")
                 
@@ -886,13 +977,89 @@ class QueryTab(ctk.CTkFrame):
                 def update_ui():
                     self.app.active_operations -= 1
                     self.answer_box.delete("1.0", "end")
-                    self.answer_box.insert("end", f"Error: {e}\n")
+                    self.answer_box.insert("end", f"Connection Error\n\n{str(e)}")
                     self.status.set_status("error", "✗ Connection Error")
                     self.query_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
         
         threading.Thread(target=run, daemon=True).start()
+
+    def toggle_contexts(self):
+        """Toggle contexts panel visibility"""
+        if self.contexts_expanded:
+            # Collapse
+            self.contexts_box.pack_forget()
+            self.contexts_toggle_btn.configure(text=f"▼ Show Contexts ({len(self.current_contexts)})")
+            self.contexts_expanded = False
+        else:
+            # Expand
+            self.contexts_box.pack(fill="both", expand=True, padx=20, pady=5)
+            self.contexts_toggle_btn.configure(text=f"▲ Hide Contexts ({len(self.current_contexts)})")
+            self.contexts_expanded = True
+
+    def copy_answer(self):
+        """Copy answer to clipboard"""
+        try:
+            # Copy to clipboard
+            self.clipboard_clear()
+            self.clipboard_append(self.current_answer)
+            
+            # Show feedback
+            original_text = self.copy_btn.cget("text")
+            self.copy_btn.configure(text="✓ Copied!")
+            
+            # Reset after 2 seconds
+            self.after(2000, lambda: self.copy_btn.configure(text=original_text))
+            
+            log("UI: Answer copied to clipboard", "UI")
+        except Exception as e:
+            log(f"UI: Copy failed: {e}", "UI")
+            self.status.set_status("error", "✗ Copy Failed")
+
+    def export_to_markdown(self):
+        """Export Q&A to Markdown file"""
+        try:
+            # Create exports directory
+            export_dir = os.path.join(BASE_DIR, "exports")
+            os.makedirs(export_dir, exist_ok=True)
+            
+            # Generate filename
+            timestamp = time.strftime("%Y%m%d-%H%M")
+            filename = f"{timestamp}-qa.md"
+            filepath = os.path.join(export_dir, filename)
+            
+            # Build markdown content
+            md_content = f"# RAG Query Export\n\n"
+            md_content += f"**Date**: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            md_content += f"---\n\n"
+            md_content += f"## Question\n\n{self.current_question}\n\n"
+            md_content += f"## Answer\n\n{self.current_answer}\n\n"
+            
+            if self.current_contexts:
+                md_content += f"---\n\n## Contexts ({len(self.current_contexts)})\n\n"
+                for i, ctx in enumerate(self.current_contexts, 1):
+                    md_content += f"### Context {i}\n\n```\n{ctx}\n```\n\n"
+            
+            md_content += f"---\n\n"
+            md_content += f"*Generated by RAGGITY ZYZTEM 2.0*\n"
+            
+            # Write to file
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(md_content)
+            
+            # Show feedback
+            original_text = self.export_btn.cget("text")
+            self.export_btn.configure(text="✓ Exported!")
+            self.after(2000, lambda: self.export_btn.configure(text=original_text))
+            
+            # Log with clickable path
+            self.status.set_status("ok", f"✓ Saved to exports/{filename}")
+            log(f"UI: Exported to {filepath}", "UI")
+            
+        except Exception as e:
+            log(f"UI: Export failed: {e}", "UI")
+            self.status.set_status("error", "✗ Export Failed")
 
 
 class SystemTab(ctk.CTkFrame):
