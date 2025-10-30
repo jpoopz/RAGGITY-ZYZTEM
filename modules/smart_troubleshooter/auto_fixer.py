@@ -20,6 +20,13 @@ except ImportError:
     def log(msg, category="TROUBLE"):
         print(f"[{category}] {msg}")
 
+# Import cloud bridge for telemetry
+try:
+    from core.cloud_bridge import bridge
+    BRIDGE_AVAILABLE = True
+except ImportError:
+    BRIDGE_AVAILABLE = False
+
 class AutoFixer:
     """Safely executes automatic fixes"""
     
@@ -81,6 +88,19 @@ class AutoFixer:
             
             if result.returncode == 0:
                 log(f"Successfully installed: {command}", "TROUBLE")
+                
+                # Send telemetry event
+                if BRIDGE_AVAILABLE:
+                    try:
+                        bridge.send_event("auto_fix", {
+                            "issue": issue.get("type", "unknown"),
+                            "fix": "pip_install",
+                            "command": command,
+                            "success": True
+                        })
+                    except Exception as e:
+                        log(f"Failed to send auto_fix event: {e}", "TROUBLE")
+                
                 return (True, f"Successfully installed package: {command}")
             else:
                 error_msg = result.stderr or result.stdout
@@ -116,6 +136,19 @@ class AutoFixer:
             
             if cleared:
                 log(f"Cleared caches: {', '.join(cleared)}", "TROUBLE")
+                
+                # Send telemetry event
+                if BRIDGE_AVAILABLE:
+                    try:
+                        bridge.send_event("auto_fix", {
+                            "issue": issue.get("type", "unknown"),
+                            "fix": "clear_cache",
+                            "cleared": cleared,
+                            "success": True
+                        })
+                    except Exception as e:
+                        log(f"Failed to send auto_fix event: {e}", "TROUBLE")
+                
                 return (True, f"Cleared caches: {', '.join(cleared)}")
             else:
                 return (False, "No cache directories found to clear")

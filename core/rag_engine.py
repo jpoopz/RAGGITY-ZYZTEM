@@ -13,6 +13,13 @@ from .config import CFG
 from logger import get_logger
 from .llm_connector import LLMConnector
 
+# Import cloud bridge for telemetry
+try:
+    from .cloud_bridge import bridge
+    BRIDGE_AVAILABLE = True
+except ImportError:
+    BRIDGE_AVAILABLE = False
+
 log = get_logger("rag")
 
 
@@ -192,6 +199,27 @@ class RAGEngine:
             json.dump(self.index_map, f, ensure_ascii=False, indent=2)
         
         log.info(f"Ingested {len(texts)} chunks into FAISS. Total: {len(self.index_map)}")
+        
+        # Send telemetry event
+        if BRIDGE_AVAILABLE:
+            try:
+                bridge.send_event("ingest_complete", {
+                    "chunks": len(texts),
+                    "total_chunks": len(self.index_map),
+                    "vector_store": "faiss",
+                    "path": os.path.basename(path)
+                })
+            except Exception as e:
+                log.warning(f"Failed to send ingest event: {e}")
+        
+        # Optional: Backup to cloud
+        if BRIDGE_AVAILABLE and os.getenv("AUTO_BACKUP") == "true":
+            try:
+                index_path = os.path.join(self.store_dir, "faiss.index")
+                bridge.push_vector_backup(index_path)
+                log.info("Vector backup pushed to cloud")
+            except Exception as e:
+                log.warning(f"Failed to push vector backup: {e}")
 
     def _ingest_chroma(self, path: str):
         """Ingest documents into ChromaDB"""
@@ -231,6 +259,19 @@ class RAGEngine:
             )
             
             log.info(f"Ingested {len(texts)} chunks into ChromaDB. Total: {self.collection.count()}")
+            
+            # Send telemetry event
+            if BRIDGE_AVAILABLE:
+                try:
+                    bridge.send_event("ingest_complete", {
+                        "chunks": len(texts),
+                        "total_chunks": self.collection.count(),
+                        "vector_store": "chroma",
+                        "path": os.path.basename(path)
+                    })
+                except Exception as e:
+                    log.warning(f"Failed to send ingest event: {e}")
+                    
         except Exception as e:
             log.error(f"Error ingesting into ChromaDB: {e}")
 
@@ -283,6 +324,18 @@ class RAGEngine:
         # Get answer from LLM
         ans = self._generate_answer(question, ctx)
         
+        # Send telemetry event
+        if BRIDGE_AVAILABLE:
+            try:
+                bridge.send_event("query", {
+                    "q": question[:200],  # Truncate long queries
+                    "answer": ans[:120],  # Truncate long answers
+                    "contexts": len(ctx),
+                    "vector_store": "faiss"
+                })
+            except Exception as e:
+                log.warning(f"Failed to send query event: {e}")
+        
         return {
             "answer": ans,
             "contexts": ctx,
@@ -317,6 +370,18 @@ class RAGEngine:
             
             # Get answer from LLM
             ans = self._generate_answer(question, ctx)
+            
+            # Send telemetry event
+            if BRIDGE_AVAILABLE:
+                try:
+                    bridge.send_event("query", {
+                        "q": question[:200],
+                        "answer": ans[:120],
+                        "contexts": len(ctx),
+                        "vector_store": "chroma"
+                    })
+                except Exception as e:
+                    log.warning(f"Failed to send query event: {e}")
             
             return {
                 "answer": ans,
