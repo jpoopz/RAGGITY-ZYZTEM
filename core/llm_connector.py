@@ -4,9 +4,17 @@ LLM Connector - Abstracts LLM providers with Ollama as default and OpenAI option
 
 from __future__ import annotations
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
-from .config import CFG
+# Import settings - try new unified settings, fallback to legacy config
+try:
+    from .settings import load_settings
+    SETTINGS = load_settings()
+    CFG = SETTINGS  # Compatibility alias
+except ImportError:
+    from .config import CFG
+    SETTINGS = CFG
+
 from logger import get_logger
 
 log = get_logger("llm")
@@ -15,9 +23,11 @@ log = get_logger("llm")
 class LLMConnector:
     """Unified connector for LLM and embedding operations"""
     
-    def __init__(self, provider: str | None = None, model: str | None = None):
-        self.provider = provider or CFG.provider
-        self.model = model or CFG.model_name
+    def __init__(self, provider: str | None = None, model: str | None = None, settings = None):
+        # Use provided settings or global
+        self.settings = settings or SETTINGS
+        self.provider = provider or self.settings.provider
+        self.model = model or self.settings.model_name
 
     def embed(self, texts: List[str]) -> List[List[float]]:
         """
@@ -60,14 +70,14 @@ class LLMConnector:
         import requests
         
         embeddings = []
-        model = CFG.embedding_model
+        model = self.settings.embedding_model
         
         for text in texts:
             try:
                 res = requests.post(
-                    f"{CFG.ollama_host}/api/embeddings",
+                    f"{self.settings.ollama_host}/api/embeddings",
                     json={"model": model, "prompt": text},
-                    timeout=CFG.timeout
+                    timeout=self.settings.timeout
                 )
                 res.raise_for_status()
                 data = res.json()
@@ -92,13 +102,13 @@ class LLMConnector:
         
         try:
             res = requests.post(
-                f"{CFG.ollama_host}/api/chat",
+                f"{self.settings.ollama_host}/api/chat",
                 json={
                     "model": self.model,
                     "messages": messages,
                     "stream": False
                 },
-                timeout=CFG.timeout
+                timeout=self.settings.timeout
             )
             res.raise_for_status()
             data = res.json()
