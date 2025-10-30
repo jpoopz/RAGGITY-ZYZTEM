@@ -1285,11 +1285,13 @@ class SystemTab(ctk.CTkFrame):
 
 
 class LogsTab(ctk.CTkFrame):
-    """Live logs viewer tab"""
+    """Live logs viewer with filtering and controls"""
     
     def __init__(self, parent, app):
         super().__init__(parent, fg_color=DARK_BG)
         self.app = app
+        self.tailing_paused = False
+        self.log_filter = "ALL"
         
         # Title
         title = ctk.CTkLabel(self, text="Live Logs", font=heading())
@@ -1299,8 +1301,60 @@ class LogsTab(ctk.CTkFrame):
         logs_card = Card(self)
         logs_card.pack(padx=20, pady=10, fill="both", expand=True)
         
+        # Controls header
+        controls_frame = ctk.CTkFrame(logs_card, fg_color="transparent")
+        controls_frame.pack(fill="x", padx=20, pady=10)
+        
+        ctk.CTkLabel(controls_frame, text="Controls", font=subheading()).pack(side="left")
+        
+        # Open logs folder button
+        self.open_folder_btn = ctk.CTkButton(
+            controls_frame,
+            text="📁 Open Logs Folder",
+            command=self.open_logs_folder,
+            width=150,
+            height=30,
+            font=body()
+        )
+        self.open_folder_btn.pack(side="right", padx=5)
+        
+        # Pause toggle button
+        self.pause_btn = ctk.CTkButton(
+            controls_frame,
+            text="⏸️ Pause Tailing",
+            command=self.toggle_pause,
+            width=130,
+            height=30,
+            font=body(),
+            fg_color=ACCENT
+        )
+        self.pause_btn.pack(side="right", padx=5)
+        
+        # Filter controls
+        filter_frame = ctk.CTkFrame(logs_card, fg_color="transparent")
+        filter_frame.pack(fill="x", padx=20, pady=5)
+        
+        ctk.CTkLabel(filter_frame, text="Filter:", font=body(), text_color=TEXT_SECONDARY).pack(side="left", padx=(0, 10))
+        
+        # Filter buttons
+        self.filter_buttons = {}
+        for level in ["ALL", "INFO", "WARN", "ERROR"]:
+            btn = ctk.CTkButton(
+                filter_frame,
+                text=level,
+                command=lambda l=level: self.set_filter(l),
+                width=70,
+                height=28,
+                font=small(),
+                fg_color=ACCENT if level == "ALL" else "transparent",
+                border_width=1,
+                border_color=ACCENT
+            )
+            btn.pack(side="left", padx=3)
+            self.filter_buttons[level] = btn
+        
         # Status
-        self.status = StatusLabel(logs_card, status="info", text="")
+        self.status = StatusLabel(logs_card, status="info", text="Tailing...")
         self.status.pack(pady=10)
         
         # Log viewer
@@ -1309,30 +1363,114 @@ class LogsTab(ctk.CTkFrame):
         
         self.after(1000, self.refresh)
 
+    def toggle_pause(self):
+        """Toggle pause/resume tailing"""
+        self.tailing_paused = not self.tailing_paused
+        
+        if self.tailing_paused:
+            self.pause_btn.configure(text="▶️ Resume Tailing", fg_color=STATUS_WARNING)
+            self.status.set_status("warn", "⏸️ Paused")
+        else:
+            self.pause_btn.configure(text="⏸️ Pause Tailing", fg_color=ACCENT)
+            self.status.set_status("info", "▶️ Tailing...")
+            # Immediately refresh when resuming
+            self.after(100, self.refresh)
+
+    def set_filter(self, level: str):
+        """Set log level filter"""
+        self.log_filter = level
+        
+        # Update button colors
+        for lvl, btn in self.filter_buttons.items():
+            if lvl == level:
+                btn.configure(fg_color=ACCENT)
+            else:
+                btn.configure(fg_color="transparent")
+        
+        # Immediately refresh with new filter
+        self.refresh()
+        
+        log(f"UI: Log filter set to {level}", "UI")
+
+    def open_logs_folder(self):
+        """Open logs folder in file explorer"""
+        try:
+            logs_dir = os.path.join(BASE_DIR, "logs")
+            
+            # Ensure directory exists
+            os.makedirs(logs_dir, exist_ok=True)
+            
+            # Open in file explorer (cross-platform)
+            if os.name == 'nt':  # Windows
+                os.startfile(logs_dir)
+            elif os.name == 'posix':  # macOS/Linux
+                import subprocess
+                if sys.platform == 'darwin':  # macOS
+                    subprocess.Popen(['open', logs_dir])
+                else:  # Linux
+                    subprocess.Popen(['xdg-open', logs_dir])
+            
+            self.status.set_status("ok", "✓ Folder opened")
+            log(f"UI: Opened logs folder: {logs_dir}", "UI")
+            
+        except Exception as e:
+            log(f"UI: Failed to open logs folder: {e}", "UI")
+            self.status.set_status("error", "✗ Failed to open folder")
+
     def refresh(self):
         """Refresh logs (non-blocking)"""
-        log_file = os.path.join(BASE_DIR, "Logs", "app.log")
+        # Check if paused before scheduling next refresh
+        if not self.tailing_paused:
+            log_file = os.path.join(BASE_DIR, "logs", "app.log")
+            
+            def read():
+                try:
+                    if os.path.exists(log_file):
+                        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                            all_lines = f.readlines()[-100:]  # Read more lines for filtering
+                        
+                        # Apply filter
+                        if self.log_filter == "ALL":
+                            filtered_lines = all_lines
+                        else:
+                            # Filter by log level
+                            filtered_lines = []
+                            for line in all_lines:
+                                if self.log_filter == "ERROR" and "ERROR" in line:
+                                    filtered_lines.append(line)
+                                elif self.log_filter == "WARN" and ("WARN" in line or "WARNING" in line):
+                                    filtered_lines.append(line)
+                                elif self.log_filter == "INFO" and "INFO" in line:
+                                    filtered_lines.append(line)
+                        
+                        # Limit display to last 50 after filtering
+                        display_lines = filtered_lines[-50:] if filtered_lines else []
+                        
+                        content = "".join(display_lines) if display_lines else f"No {self.log_filter} logs found.\n"
+                        
+                        def update_ui():
+                            # Only update if not paused (double check)
+                            if not self.tailing_paused:
+                                self.log_viewer.delete("1.0", "end")
+                                self.log_viewer.insert("end", content)
+                                
+                                # Auto-scroll to bottom
+                                self.log_viewer.see("end")
+                                
+                                if self.log_filter == "ALL":
+                                    self.status.set_status("ok", f"✓ {len(display_lines)} lines")
+                                else:
+                                    self.status.set_status("ok", f"✓ {len(display_lines)} {self.log_filter} lines")
+                        
+                        self.after(0, update_ui)
+                    else:
+                        self.after(0, lambda: self.status.set_status("warn", "⚠ Log file not found"))
+                except Exception as e:
+                    log(f"UI: Log refresh error: {e}", "UI")
+            
+            threading.Thread(target=read, daemon=True).start()
         
-        def read():
-            try:
-                if os.path.exists(log_file):
-                    with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()[-50:]
-                    
-                    content = "".join(lines) if lines else "No logs yet.\n"
-                    
-                    def update_ui():
-                        self.log_viewer.delete("1.0", "end")
-                        self.log_viewer.insert("end", content)
-                        self.status.set_status("ok", f"✓ {len(lines)} lines")
-                    
-                    self.after(0, update_ui)
-                else:
-                    self.after(0, lambda: self.status.set_status("warn", "⚠ Log file not found"))
-            except Exception:
-                pass
-        
-        threading.Thread(target=read, daemon=True).start()
+        # Schedule next refresh (respects pause state)
         self.after(4000, self.refresh)
 
 
