@@ -70,6 +70,9 @@ class RaggityUI(ctk.CTk):
         self.content = ContentArea(self, main_container)
         self.content.pack(side="right", fill="both", expand=True)
         
+        # Now select the default tab (after both sidebar and content are created)
+        self.sidebar.select_tab("Dashboard")
+        
         # Bind command palette
         self.bind("<Control-k>", lambda e: self.open_command_palette())
         self.bind("<Control-K>", lambda e: self.open_command_palette())
@@ -528,8 +531,7 @@ class Sidebar(ctk.CTkFrame):
             btn.pack(pady=3, padx=10, fill="x")
             self.buttons.append((name, btn, icon))
         
-        # Select Dashboard by default
-        self.select_tab("Dashboard")
+        # Note: Default tab selection happens in RaggityUI.__init__ after content is created
     
     def toggle_collapse(self):
         """Toggle sidebar between collapsed and expanded"""

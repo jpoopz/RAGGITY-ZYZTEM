@@ -27,6 +27,7 @@ STATUS_INFO = "#60a5fa"      # Blue (info)
 # Semantic colors
 SUCCESS = STATUS_OK
 WARNING = STATUS_WARN
+STATUS_WARNING = STATUS_WARN  # Additional alias for compatibility
 ERROR = STATUS_ERROR
 INFO = STATUS_INFO
 
