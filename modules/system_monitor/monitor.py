@@ -58,7 +58,8 @@ class SystemMonitor:
             result = sock.connect_ex(('127.0.0.1', port))
             sock.close()
             return result == 0
-        except:
+        except (OSError, socket.error) as e:
+            log.warning(f"Port check failed for {port}: {e}")
             return False
     
     def get_snapshot(self) -> Dict[str, Any]:
@@ -125,6 +126,8 @@ class SystemMonitor:
                 self.update_metrics()
             except Exception as e:
                 log.error(f"Error in monitor loop: {e}")
+                import traceback
+                log.error(traceback.format_exc())
             
             time.sleep(self.update_interval)
     

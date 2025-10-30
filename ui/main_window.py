@@ -695,8 +695,57 @@ class BridgeTab(ctk.CTkFrame):
         threading.Thread(target=run, daemon=True).start()
 
 
+def exception_hook(exc_type, exc_value, exc_traceback):
+    """
+    Top-level exception hook to log uncaught errors
+    Catches all exceptions that would normally crash the application
+    """
+    import traceback
+    
+    # Don't catch KeyboardInterrupt
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    
+    # Format full traceback
+    tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+    tb_text = "".join(tb_lines)
+    
+    # Log to file
+    log_file = os.path.join(BASE_DIR, "Logs", "app.log")
+    try:
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        with open(log_file, "a", encoding="utf-8") as f:
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"\n{'='*60}\n")
+            f.write(f"[{timestamp}] [UNCAUGHT_EXCEPTION]\n")
+            f.write(tb_text)
+            f.write(f"{'='*60}\n\n")
+    except Exception:
+        pass  # Can't log, print to stderr
+    
+    # Also log via logger
+    log(f"Uncaught exception: {exc_type.__name__}: {exc_value}", "UI")
+    
+    # Print to stderr
+    print(f"\n{'='*60}", file=sys.stderr)
+    print(f"UNCAUGHT EXCEPTION", file=sys.stderr)
+    print(tb_text, file=sys.stderr)
+    print(f"{'='*60}\n", file=sys.stderr)
+
+
 if __name__ == "__main__":
+    # Install exception hook to catch all uncaught errors
+    sys.excepthook = exception_hook
+    
     apply_theme()
     log("UI: Starting RAGGITY ZYZTEM 2.0", "UI")
-    app = RaggityUI()
-    app.mainloop()
+    
+    try:
+        app = RaggityUI()
+        app.mainloop()
+    except Exception as e:
+        log(f"UI: Fatal error: {e}", "UI")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

@@ -5,10 +5,23 @@ Receives events and vector backups from RAG System clients
 
 from fastapi import FastAPI, Request, HTTPException
 import os
+import sys
 import json
 import base64
 import hashlib
 import time
+import logging
+
+# Setup basic logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler('cloud_bridge.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("cloud_bridge")
 
 app = FastAPI(title="RAGGITY Cloud Bridge")
 
@@ -38,7 +51,7 @@ def verify(req_json):
     ref = hashlib.sha256((API_KEY + body).encode()).hexdigest()
     
     if sig != ref:
-        print(f"[Bridge] Invalid signature: got {sig}, expected {ref}")
+        logger.warning(f"Invalid signature: got {sig[:16]}..., expected {ref[:16]}...")
         raise HTTPException(status_code=403, detail="Invalid signature")
 
 
@@ -75,7 +88,7 @@ async def events(req: Request):
     payload = data.get("payload")
     ts = data.get("ts")
     
-    print(f"[Bridge] event={ev} size={len(str(payload))} ts={ts}")
+    logger.info(f"Event received: {ev}, size={len(str(payload))} bytes, ts={ts}")
     
     # Optional: Store events to file for analytics
     event_log = os.path.join(BACKUP_DIR, "events.log")
@@ -121,12 +134,12 @@ async def backup(req: Request):
     if expected_checksum:
         actual_checksum = hashlib.md5(bdata).hexdigest()
         if actual_checksum != expected_checksum:
-            print(f"[Bridge] Checksum mismatch: got {actual_checksum}, expected {expected_checksum}")
+            logger.error(f"Checksum mismatch: got {actual_checksum}, expected {expected_checksum}")
             raise HTTPException(status_code=400, detail="Checksum mismatch")
     
     # Verify size if provided
     if expected_size and len(bdata) != expected_size:
-        print(f"[Bridge] Size mismatch: got {len(bdata)}, expected {expected_size}")
+        logger.error(f"Size mismatch: got {len(bdata)}, expected {expected_size}")
         raise HTTPException(status_code=400, detail="Size mismatch")
     
     # Save to backup directory
@@ -147,7 +160,7 @@ async def backup(req: Request):
         with open(backup_path, "wb") as f:
             f.write(bdata)
         
-        print(f"[Bridge] Stored backup: {fname} ({len(bdata)} bytes)")
+        logger.info(f"Stored backup: {fname} ({len(bdata)} bytes) → {backup_path_versioned}")
         
         return {
             "stored": fname,
@@ -157,7 +170,7 @@ async def backup(req: Request):
         }
         
     except Exception as e:
-        print(f"[Bridge] Error saving backup: {e}")
+        logger.error(f"Error saving backup: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save backup: {e}")
 
 
@@ -185,7 +198,7 @@ async def get_backup(filename: str):
         b64_data = base64.b64encode(bdata).decode()
         checksum = hashlib.md5(bdata).hexdigest()
         
-        print(f"[Bridge] Sending backup: {filename} ({len(bdata)} bytes)")
+        logger.info(f"Sending backup: {filename} ({len(bdata)} bytes)")
         
         return {
             "file": filename,
@@ -195,7 +208,7 @@ async def get_backup(filename: str):
         }
         
     except Exception as e:
-        print(f"[Bridge] Error reading backup: {e}")
+        logger.error(f"Error reading backup: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to read backup: {e}")
 
 
@@ -230,20 +243,20 @@ async def list_backups():
 if __name__ == "__main__":
     import uvicorn
     
-    print("=" * 60)
-    print("RAGGITY Cloud Bridge Server")
-    print("=" * 60)
-    print(f"Backup directory: {BACKUP_DIR}")
-    print(f"API key set: {bool(API_KEY)}")
-    print("")
-    print("Endpoints:")
-    print("  GET  /health - Health check")
-    print("  POST /events - Receive events")
-    print("  POST /backup/vector - Upload vector backup")
-    print("  GET  /backup/vector/{filename} - Download backup")
-    print("  GET  /backup/list - List all backups")
-    print("")
-    print("Starting server on 0.0.0.0:9000...")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("RAGGITY Cloud Bridge Server")
+    logger.info("=" * 60)
+    logger.info(f"Backup directory: {BACKUP_DIR}")
+    logger.info(f"API key set: {bool(API_KEY)}")
+    logger.info("")
+    logger.info("Endpoints:")
+    logger.info("  GET  /health - Health check")
+    logger.info("  POST /events - Receive events")
+    logger.info("  POST /backup/vector - Upload vector backup")
+    logger.info("  GET  /backup/vector/{filename} - Download backup")
+    logger.info("  GET  /backup/list - List all backups")
+    logger.info("")
+    logger.info("Starting server on 0.0.0.0:9000...")
+    logger.info("=" * 60)
     
     uvicorn.run(app, host="0.0.0.0", port=9000)
