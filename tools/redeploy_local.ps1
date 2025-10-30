@@ -66,20 +66,10 @@ if (!(Test-Path $venv)) { py -3 -m venv .venv }
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 
-# 6) Settings migration (prefer API route if available; else call module)
+# 6) Settings migration
 try {
   Write-Host "Running settings migration helper..."
-  python - << 'PYCODE'
-import os
-try:
-    from core.settings_migrate import migrate
-    from pathlib import Path
-    root = Path(__file__).resolve().parent
-    changed, report = migrate(str(root))
-    print("MIGRATE:", changed, report)
-except Exception as e:
-    print("MIGRATE-ERROR:", e)
-PYCODE
+  python -c "from core.settings_migrate import migrate; changed, report = migrate('.'); print('MIGRATE:', changed, report)"
 } catch { Write-Host "Migration helper not available, continuing..." }
 
 # 7) Detect Ollama
