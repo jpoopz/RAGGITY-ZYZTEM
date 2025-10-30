@@ -199,24 +199,151 @@ RAG_System/
 
 ## ⚙️ Configuration
 
-### config.yaml
+RAGGITY uses a **unified settings system** with a clear precedence order and multiple persistence options.
+
+### Settings Precedence Order
+
+Settings are loaded in this order (highest to lowest priority):
+
+```
+1. Environment Variables (highest - always wins)
+   ↓
+2. ui/config.json (UI runtime settings)
+   ↓
+3. config.yaml (repository configuration)
+   ↓
+4. Defaults from Settings schema (lowest - fallback)
+```
+
+**Example**: If you set `VECTOR_STORE=chroma` in environment, it will override any value in config.yaml or ui/config.json.
+
+### Configuration Files
+
+#### config.yaml (Repository Settings)
+Application-level configuration that's safe to commit to version control:
+
 ```yaml
 # LLM Provider
 provider: "ollama"        # or "openai"
 model_name: "llama3.2"
-openai_api_key: ""        # Required if provider=openai
+model_secondary: null     # Optional secondary model for complex queries
+embedding_model: "nomic-embed-text"
+
+# Generation Settings
+temperature: 0.3          # 0.0 (deterministic) to 2.0 (creative)
+timeout: 120              # Request timeout in seconds
 
 # Vector Store
 vector_store: "faiss"     # or "chroma"
-data_dir: "data"
-vectorstore_dir: "vectorstore"
-
-# Hybrid Mode
-hybrid_mode: false        # Enable cloud query delegation
+batch_size: 64            # Embedding batch size
+max_k: 5                  # Max contexts to retrieve
 
 # Paths
-obsidian_vault_path: "C:/Users/YourName/Documents/Obsidian/Notes"
+data_dir: "data"
+vector_dir: "vectorstore"
+chroma_dir: ".chromadb"
+
+# Hybrid Mode
+hybrid_mode: true         # Enable cloud query delegation
+
+# UI
+theme: "dark"             # dark, light, or auto
+show_advanced: false
 ```
+
+#### ui/config.json (UI Runtime Settings)
+User preferences that change frequently (auto-generated, don't edit manually):
+
+```json
+{
+  "theme": "dark",
+  "vector_store": "faiss",
+  "max_k": 5,
+  "show_advanced": false
+}
+```
+
+### Secrets Management
+
+**⚠️ SECURITY: Never commit secrets to version control!**
+
+Sensitive keys are **only** loaded from environment variables and **never** saved to config files:
+
+- `OPENAI_API_KEY` - OpenAI API authentication
+- `CLOUD_KEY` - Cloud bridge authentication
+- `API_KEY` - Local API authentication
+
+**Why?** Prevents accidental commits of secrets to git repositories.
+
+**How to set secrets:**
+```bash
+# Windows
+set OPENAI_API_KEY=sk-your-key-here
+set CLOUD_KEY=your-secret-key
+
+# Linux/Mac
+export OPENAI_API_KEY=sk-your-key-here
+export CLOUD_KEY=your-secret-key
+```
+
+Or create a `.env` file (use `env.sample` as template) - this file is git-ignored.
+
+### Using Settings in UI
+
+**Save Button** (Quick Save):
+- Saves to `ui/config.json` only
+- For UI preferences that change frequently
+- Takes effect immediately (no restart)
+- Fields: theme, vector_store, max_k, show_advanced
+
+**Persist Button** (Permanent Save):
+- Saves to `config.yaml`
+- For application-level settings
+- Survives UI restarts and updates
+- Excludes secrets (safe to commit)
+
+### Settings That Require Restart
+
+Some settings require restarting the API and/or UI to take effect:
+
+**Requires API Restart:**
+- `vector_store` (FAISS ↔ ChromaDB)
+- `provider` (Ollama ↔ OpenAI)
+- `model_name`, `embedding_model`
+- `data_dir`, `vector_dir`
+
+**Requires UI Restart:**
+- `theme` (if changed via config.yaml)
+
+**No Restart Required:**
+- `max_k` (via UI Settings)
+- `show_advanced`
+- `theme` (via UI Settings)
+
+The UI will show a warning toast if you change settings that require restart.
+
+### Settings Schema
+
+All settings are defined in `core/settings_schema.py` using Pydantic for type safety:
+
+**Groups:**
+- **Environment**: env (dev/prod)
+- **Paths**: data_dir, vector_dir, chroma_dir
+- **Vector Store**: vector_store (faiss/chroma)
+- **LLM**: provider, model_name, model_secondary, temperature, max_tokens, timeout
+- **Ollama**: ollama_host
+- **OpenAI**: openai_api_key, openai_model, openai_embedding_model
+- **Hybrid**: hybrid_mode, cloud_url, cloud_key
+- **API/Security**: cors_allow, api_key
+- **UI**: theme, show_advanced
+- **Performance**: batch_size, max_k
+
+**Validation:**
+- Temperature: 0.0 - 2.0
+- Batch size: 1 - 512
+- Max K: 1 - 20
+- Provider: "ollama" or "openai" only
+- Vector store: "faiss" or "chroma" only
 
 ### Vector Store Selection
 
