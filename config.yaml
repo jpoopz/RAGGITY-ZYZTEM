@@ -1,0 +1,28 @@
+# RAG System Configuration
+# Values here override defaults; environment variables override this file
+
+# LLM Provider Configuration
+provider: ollama  # ollama or openai
+model_name: llama3.2
+embedding_model: nomic-embed-text
+
+# Ollama Settings
+ollama_host: http://localhost:11434
+
+# OpenAI Settings (only used if provider=openai)
+# openai_api_key: sk-...  # Better to use env var OPENAI_API_KEY
+openai_model: gpt-4o-mini
+openai_embedding_model: text-embedding-3-small
+
+# Generation Settings
+temperature: 0.3
+timeout: 120
+
+# Vector Store Configuration
+vector_store: faiss  # faiss or chroma
+vector_dir: vector_store
+chroma_dir: .chromadb
+
+# Data Directories
+data_dir: data
+
