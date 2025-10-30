@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from .providers import search_openalex, search_arxiv, search_semanticscholar, multi_search
 from .citations.harvard import cite_from_dois, work_to_csl, render_bibliography
 from .arxiv_helper import download_and_index, get_arxiv_pdf_url
+from .exporters import to_bibtex, to_ris, to_markdown_bibliography, to_csv
 from logger import get_logger
 
 log = get_logger("academic_api")
@@ -22,6 +23,12 @@ class DownloadArxivRequest(BaseModel):
     """Request model for ArXiv download"""
     arxiv_id: str
     output_dir: str = "data/arxiv"
+
+
+class ExportRequest(BaseModel):
+    """Request model for exporting works"""
+    works: List[Dict[str, Any]]
+    format: str  # bibtex, ris, markdown, csv
 
 
 class CiteRequest(BaseModel):
@@ -173,10 +180,64 @@ def download_arxiv_paper(request: DownloadArxivRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/export_bib")
-def export_bibtex(request: ExportBibRequest):
+@router.post("/export")
+def export_works(request: ExportRequest):
     """
-    Export DOIs as BibTeX.
+    Export works to various formats.
+    
+    Supports: bibtex, ris, markdown, csv
+    
+    Returns:
+        Dictionary with exported content and metadata
+    """
+    if not request.works:
+        raise HTTPException(status_code=400, detail="At least one work required")
+    
+    format_lower = request.format.lower()
+    
+    try:
+        if format_lower == "bibtex":
+            content = to_bibtex(request.works)
+            content_type = "text/plain"
+        
+        elif format_lower == "ris":
+            content = to_ris(request.works)
+            content_type = "text/plain"
+        
+        elif format_lower == "markdown":
+            content = to_markdown_bibliography(request.works, style="harvard")
+            content_type = "text/markdown"
+        
+        elif format_lower == "csv":
+            content = to_csv(request.works)
+            content_type = "text/csv"
+        
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported format: {request.format}. Use: bibtex, ris, markdown, csv"
+            )
+        
+        return {
+            "format": format_lower,
+            "content": content,
+            "content_type": content_type,
+            "count": len(request.works)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"Export failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/export_bib")
+def export_bibtex_legacy(request: ExportBibRequest):
+    """
+    Legacy endpoint: Export DOIs as BibTeX.
+    
+    Deprecated: Use /export with format="bibtex" instead.
     
     Returns:
         BibTeX string
@@ -186,87 +247,44 @@ def export_bibtex(request: ExportBibRequest):
     
     try:
         from .providers import fetch_crossref
-        from pybtex.database import BibliographyData, Entry
         
-        bib_db = BibliographyData()
-        
+        # Fetch metadata for each DOI
+        works = []
         for doi in request.dois:
             metadata = fetch_crossref(doi, request.polite_email)
-            
-            if not metadata:
-                continue
-            
-            # Generate citation key (simple: first_author_year)
-            authors = metadata.get("author", [])
-            year = None
-            
-            if authors:
-                first_author = authors[0].get("family", "unknown")
-            else:
-                first_author = "unknown"
-            
-            published = metadata.get("published") or metadata.get("published-print")
-            if published and "date-parts" in published:
-                parts = published["date-parts"][0]
-                if parts:
-                    year = parts[0]
-            
-            key = f"{first_author.lower()}{year or 'nd'}"
-            
-            # Build BibTeX entry
-            entry_type = metadata.get("type", "article")
-            
-            # Map common fields
-            fields = {
-                "title": metadata.get("title", ["Untitled"])[0],
-                "doi": doi
-            }
-            
-            if year:
-                fields["year"] = str(year)
-            
-            if authors:
-                author_names = []
-                for author in authors[:10]:  # Limit to 10
-                    family = author.get("family", "")
+            if metadata:
+                # Convert to work dict
+                authors = []
+                for author in metadata.get("author", [])[:5]:
                     given = author.get("given", "")
+                    family = author.get("family", "")
                     if family:
-                        author_names.append(f"{family}, {given}" if given else family)
-                fields["author"] = " and ".join(author_names)
-            
-            container = metadata.get("container-title", [])
-            if container:
-                fields["journal"] = container[0]
-            
-            if "volume" in metadata:
-                fields["volume"] = str(metadata["volume"])
-            
-            if "issue" in metadata:
-                fields["number"] = str(metadata["issue"])
-            
-            if "page" in metadata:
-                fields["pages"] = metadata["page"]
-            
-            # Create entry
-            entry = Entry(entry_type, fields=[(k, v) for k, v in fields.items()])
-            bib_db.entries[key] = entry
+                        authors.append(f"{given} {family}".strip())
+                
+                year = None
+                published = metadata.get("published") or metadata.get("published-print")
+                if published and "date-parts" in published:
+                    parts = published["date-parts"][0]
+                    if parts:
+                        year = parts[0]
+                
+                work = {
+                    "title": metadata.get("title", ["Untitled"])[0],
+                    "authors": authors,
+                    "year": year,
+                    "doi": doi,
+                    "venue": metadata.get("container-title", [""])[0] if metadata.get("container-title") else None
+                }
+                works.append(work)
         
-        # Convert to BibTeX string
-        from io import StringIO
-        output = StringIO()
-        bib_db.to_file(output, bib_format='bibtex')
-        bibtex_str = output.getvalue()
-        
-        log.info(f"Exported {len(bib_db.entries)} entries to BibTeX")
+        # Export to BibTeX
+        bibtex_content = to_bibtex(works)
         
         return {
-            "bibtex": bibtex_str,
-            "count": len(bib_db.entries)
+            "bibtex": bibtex_content,
+            "count": len(works)
         }
     
-    except ImportError as e:
-        log.error(f"Missing dependency: {e}")
-        raise HTTPException(status_code=500, detail=f"Missing dependency: {e}")
     except Exception as e:
         log.error(f"BibTeX export failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
