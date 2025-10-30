@@ -80,6 +80,10 @@ class Config:
         # Vector store settings
         self.vector_store: str = get_config("VECTOR_STORE", "vector_store", "faiss")  # faiss or chroma
         
+        # Hybrid mode settings
+        hybrid_mode_str = get_config("HYBRID_MODE", "hybrid_mode", "1")
+        self.hybrid_mode: bool = str(hybrid_mode_str) == "1" or str(hybrid_mode_str).lower() == "true"
+        
         # Path settings
         base_dir = Path(__file__).parent.parent.absolute()
         self.data_dir: str = get_config("DATA_DIR", "data_dir", str(base_dir / "data"))

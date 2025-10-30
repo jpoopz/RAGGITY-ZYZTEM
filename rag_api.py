@@ -7,6 +7,7 @@ from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
+import time
 from typing import Optional
 from pydantic import BaseModel
 
@@ -30,6 +31,14 @@ try:
 except ImportError as e:
     SYSTEM_MONITOR_AVAILABLE = False
     print(f"System monitor not available: {e}")
+
+# Import cloud bridge for hybrid mode
+try:
+    from core.cloud_bridge import bridge
+    BRIDGE_AVAILABLE = True
+except ImportError as e:
+    BRIDGE_AVAILABLE = False
+    print(f"Cloud bridge not available: {e}")
 
 log = get_logger("rag_api")
 
@@ -104,7 +113,7 @@ def ingest_path(request: IngestPathRequest):
 @app.get("/query")
 def query(q: str, k: int = 5):
     """
-    Query the RAG system
+    Query the RAG system (with optional hybrid mode delegation)
     
     Args:
         q: Query string
@@ -116,6 +125,32 @@ def query(q: str, k: int = 5):
     if not q:
         raise HTTPException(status_code=400, detail="query parameter 'q' is required")
     
+    # Hybrid mode: delegate to cloud if healthy
+    if CFG.hybrid_mode and BRIDGE_AVAILABLE:
+        try:
+            log.info(f"Hybrid mode: checking cloud health for query delegation")
+            health = bridge.health()
+            
+            if health.get("status") == "ok":
+                log.info(f"Cloud healthy, delegating query: {q[:100]}")
+                
+                # Send delegation event
+                bridge.send_event("delegate_query", {
+                    "q": q[:200],  # Truncate for privacy
+                    "k": k,
+                    "timestamp": time.time()
+                })
+                
+                return {
+                    "answer": "Query delegated to cloud bridge for processing",
+                    "contexts": [],
+                    "delegated": True,
+                    "cloud_url": os.getenv("CLOUD_URL", "")
+                }
+        except Exception as e:
+            log.warning(f"Hybrid mode delegation failed, falling back to local: {e}")
+    
+    # Fall back to local RAG query
     result = rag.query(q, k=k)
     
     return result

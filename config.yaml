@@ -23,6 +23,9 @@ vector_store: faiss  # faiss or chroma
 vector_dir: vector_store
 chroma_dir: .chromadb
 
+# Hybrid Mode - Delegate queries to cloud when available
+hybrid_mode: true  # true or false (1 or 0)
+
 # Data Directories
 data_dir: data
 
