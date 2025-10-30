@@ -205,12 +205,36 @@ hybrid_mode: false        # Enable cloud query delegation
 obsidian_vault_path: "C:/Users/YourName/Documents/Obsidian/Notes"
 ```
 
+### Vector Store Selection
+
+RAGGITY supports two vector database backends:
+
+**FAISS (Default)**
+- Fast and lightweight
+- In-memory with file persistence
+- No external dependencies
+- Best for most use cases
+
+**ChromaDB**
+- Feature-rich persistent storage
+- Better for large-scale deployments
+- Requires `chromadb` package: `pip install chromadb`
+- Stores data in `.chromadb/` directory
+
+**Switching Vector Stores:**
+
+1. **Via UI**: Settings tab → Select vector store → Save
+2. **Via config.yaml**: Set `vector_store: chroma`
+3. **Via environment**: `set VECTOR_STORE=chroma`
+
+**Note**: Changing vector stores requires restarting the API and UI. Your existing index data is stored separately for each backend.
+
 ### Environment Variables (Override config.yaml)
 ```bash
 set PROVIDER=ollama
 set MODEL_NAME=llama3.2
 set OPENAI_API_KEY=sk-...
-set VECTOR_STORE=faiss
+set VECTOR_STORE=faiss         # or chroma
 set HYBRID_MODE=1
 set CLOUD_URL=https://vps.example.com/api
 set CLOUD_KEY=secret123
