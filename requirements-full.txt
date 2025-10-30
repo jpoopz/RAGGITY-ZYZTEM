@@ -1,0 +1,50 @@
+# Full installation with all optional features
+# Install with: pip install -r requirements-full.txt
+
+-r requirements-minimal.txt
+
+# OpenAI Support
+openai>=1.0.0
+
+# ChromaDB Support
+chromadb>=0.4.22
+
+# GPU Monitoring
+pynvml>=11.5.0
+
+# Web Retrieval
+duckduckgo-search>=3.9.0
+newspaper3k>=0.2.8
+
+# Additional Document Formats
+python-docx>=1.1.0
+
+# Flask (legacy API support)
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Web Scraping
+beautifulsoup4>=4.12.0
+
+# Progress Bars
+tqdm>=4.66.0
+
+# CLO 3D Module
+trimesh>=3.20.0
+open3d>=0.18.0
+torch>=2.0.0
+
+# Voice Control
+pyaudio>=0.2.11
+keyboard>=0.13.5
+pygame>=2.5.0
+
+# Security
+cryptography>=41.0.0
+
+# Development Tools
+pre-commit>=3.5.0
+black>=24.4.0
+isort>=5.13.0
+flake8>=7.0.0
+

@@ -1279,62 +1279,40 @@ class RAGControlPanel:
             self.log(f"Error updating status: {e}", "ERROR")
     
     def update_gpu_status(self):
-        """Update GPU status indicator using NVIDIA NVML if available"""
+        """Update GPU status indicator using core.gpu module"""
         try:
-            # Try to import pynvml
-            try:
-                import pynvml
-            except ImportError:
-                status_msg = "GPU: Not detected (pynvml not installed)"
+            # Use core.gpu instead of direct pynvml import
+            from core.gpu import get_gpu_status
+            
+            gpu = get_gpu_status()
+            
+            if not gpu["available"]:
+                status_msg = "GPU: Not detected"
                 print(f"[GPU] {status_msg}")
                 self.log(status_msg, "GPU")
                 if hasattr(self, 'gpu_status_label'):
                     self.gpu_status_label.config(text=status_msg, foreground="gray")
                 return
             
-            # Try to initialize NVML and detect GPU
-            try:
-                pynvml.nvmlInit()
-                device_count = pynvml.nvmlDeviceGetCount()
-                
-                if device_count == 0:
-                    status_msg = "GPU: Not detected"
-                    print(f"[GPU] {status_msg}")
-                    self.log(status_msg, "GPU")
-                    if hasattr(self, 'gpu_status_label'):
-                        self.gpu_status_label.config(text=status_msg, foreground="gray")
-                    pynvml.nvmlShutdown()
-                    return
-                
-                # Get first GPU info
-                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                name = pynvml.nvmlDeviceGetName(handle).decode('utf-8')
-                mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
-                
-                # Format memory info
-                mem_used_gb = mem_info.used / (1024**3)
-                mem_total_gb = mem_info.total / (1024**3)
-                mem_percent = (mem_info.used / mem_info.total) * 100
-                
-                status_msg = f"GPU: {name} | {mem_used_gb:.1f}/{mem_total_gb:.1f}GB ({mem_percent:.0f}%) | Util: {util.gpu}%"
-                print(f"[GPU] {status_msg}")
-                self.log(status_msg, "GPU")
-                
-                # Update label if exists
-                if hasattr(self, 'gpu_status_label'):
-                    # Short version for GUI label
-                    label_text = f"GPU: {name} | {mem_percent:.0f}% used | {util.gpu}% util"
-                    self.gpu_status_label.config(text=label_text, foreground="green")
-                
-                pynvml.nvmlShutdown()
-                
-            except Exception as gpu_exception:
-                status_msg = "GPU: Not detected"
-                print(f"[GPU] {status_msg}")
-                self.log(f"GPU detection error: {gpu_exception}", "GPU")
-                if hasattr(self, 'gpu_status_label'):
-                    self.gpu_status_label.config(text=status_msg, foreground="gray")
+            # GPU is available - format status
+            name = gpu.get("name", "Unknown")
+            mem_used_mb = gpu.get("memory_used", 0)
+            mem_total_mb = gpu.get("memory_total", 0)
+            mem_percent = gpu.get("memory_percent", 0)
+            util = gpu.get("utilization", 0)
+            
+            mem_used_gb = mem_used_mb / 1024
+            mem_total_gb = mem_total_mb / 1024
+            
+            status_msg = f"GPU: {name} | {mem_used_gb:.1f}/{mem_total_gb:.1f}GB ({mem_percent:.0f}%) | Util: {util:.0f}%"
+            print(f"[GPU] {status_msg}")
+            self.log(status_msg, "GPU")
+            
+            # Update label if exists
+            if hasattr(self, 'gpu_status_label'):
+                # Short version for GUI label
+                label_text = f"GPU: {name} | {mem_percent:.0f}% used | {util:.0f}% util"
+                self.gpu_status_label.config(text=label_text, foreground="green")
                 try:
                     pynvml.nvmlShutdown()
                 except:
