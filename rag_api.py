@@ -288,10 +288,51 @@ def system_stats():
         )
 
 
-# Include academic routes if available
-if ACADEMIC_AVAILABLE:
-    app.include_router(academic_router)
-    log.info("Academic module routes registered")
+# Academic routes - simplified implementation
+try:
+    from modules.academic.providers import search_openalex, search_arxiv, fetch_crossref_by_doi, unpaywall_best, unify
+    from citations.harvard import crossref_to_csl, render_bibliography, inline_cite
+    
+    @app.get("/academic/search")
+    def academic_search(q: str, openalex: bool = True, arxiv: bool = True):
+        items = []
+        if openalex:
+            items += search_openalex(q)
+        if arxiv:
+            items += search_arxiv(q)
+        return {"results": unify(items)}
+    
+    @app.post("/academic/cite")
+    def academic_cite(body: Dict[str, Any]):
+        dois: List[str] = body.get("dois", [])
+        csl_items = []
+        inlines = []
+        for doi in dois:
+            try:
+                meta = fetch_crossref_by_doi(doi)
+                csl = crossref_to_csl(meta)
+                csl_items.append(csl)
+                authors = [a.get("family","") for a in csl.get("author", []) if a.get("family")]
+                year = None
+                try:
+                    year = csl.get("issued", {}).get("date-parts", [[None]])[0][0]
+                    year = int(year) if year else None
+                except Exception:
+                    pass
+                inlines.append(inline_cite(authors, year))
+            except Exception as e:
+                inlines.append("(n.d.)")
+        bib = render_bibliography(csl_items) if csl_items else []
+        return {"inline": "; ".join(inlines), "bibliography": bib}
+    
+    @app.get("/academic/unpaywall")
+    def academic_unpaywall(doi: str):
+        return unpaywall_best(doi) or {}
+    
+    log.info("Academic routes registered (simplified)")
+    
+except ImportError as e:
+    log.warning(f"Academic routes not available: {e}")
 
 
 if __name__ == "__main__":
