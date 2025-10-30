@@ -546,7 +546,7 @@ class DashboardTab(ctk.CTkFrame):
 
 
 class IngestTab(ctk.CTkFrame):
-    """File ingestion tab"""
+    """File ingestion tab with browse, drag-drop, and progress tracking"""
     
     def __init__(self, parent, app):
         super().__init__(parent, fg_color=DARK_BG)
@@ -560,69 +560,184 @@ class IngestTab(ctk.CTkFrame):
         ingest_card = Card(self)
         ingest_card.pack(padx=20, pady=10, fill="both", expand=True)
         
-        # Path entry
-        ctk.CTkLabel(ingest_card, text="File or Directory Path", font=subheading()).pack(pady=10, padx=20)
-        
-        self.entry = ctk.CTkEntry(
+        # Path entry with drag-drop hint
+        ctk.CTkLabel(
             ingest_card,
-            placeholder_text="Enter path or drag file here...",
-            height=40,
+            text="File or Directory Path",
+            font=subheading()
+        ).pack(pady=10, padx=20, anchor="w")
+        
+        # Path entry (drag-drop area)
+        self.path_entry = ctk.CTkEntry(
+            ingest_card,
+            placeholder_text="Paste path or drop file here...",
+            height=50,
             font=body()
         )
-        self.entry.pack(padx=20, pady=10, fill="x")
+        self.path_entry.pack(padx=20, pady=10, fill="x")
         
-        # Ingest button
-        self.ingest_btn = ctk.CTkButton(
-            ingest_card,
-            text="Ingest",
-            command=self.do_ingest,
+        # Button row
+        button_frame = ctk.CTkFrame(ingest_card, fg_color="transparent")
+        button_frame.pack(pady=10)
+        
+        # Browse button
+        self.browse_btn = ctk.CTkButton(
+            button_frame,
+            text="📂 Browse...",
+            command=self.browse_file,
+            width=130,
             height=40,
-            font=subheading(),
+            font=body(),
             fg_color=ACCENT
         )
-        self.ingest_btn.pack(pady=10)
+        self.browse_btn.grid(row=0, column=0, padx=5)
         
-        # Status
-        self.status = StatusLabel(ingest_card, status="info", text="")
-        self.status.pack(pady=5)
+        # Ingest Path button
+        self.ingest_path_btn = ctk.CTkButton(
+            button_frame,
+            text="📥 Ingest Path",
+            command=self.ingest_path,
+            width=130,
+            height=40,
+            font=body(),
+            fg_color=ACCENT
+        )
+        self.ingest_path_btn.grid(row=0, column=1, padx=5)
         
-        # Output console
+        # Ingest File button
+        self.ingest_file_btn = ctk.CTkButton(
+            button_frame,
+            text="📄 Ingest File",
+            command=self.ingest_file,
+            width=130,
+            height=40,
+            font=body(),
+            fg_color=ACCENT
+        )
+        self.ingest_file_btn.grid(row=0, column=2, padx=5)
+        
+        # Status and index size
+        status_frame = ctk.CTkFrame(ingest_card, fg_color="transparent")
+        status_frame.pack(pady=10)
+        
+        self.status = StatusLabel(status_frame, status="info", text="Ready")
+        self.status.pack(side="left", padx=10)
+        
+        self.index_size_label = ctk.CTkLabel(
+            status_frame,
+            text="Index: 0 chunks",
+            font=body(),
+            text_color=TEXT_SECONDARY
+        )
+        self.index_size_label.pack(side="left", padx=10)
+        
+        # Progress output
+        ctk.CTkLabel(
+            ingest_card,
+            text="Progress Log",
+            font=body(),
+            text_color=TEXT_SECONDARY
+        ).pack(pady=5, padx=20, anchor="w")
+        
         self.output = ctk.CTkTextbox(ingest_card, font=mono(), wrap="word")
         self.output.pack(fill="both", expand=True, padx=20, pady=10)
         self.output.insert("1.0", "Ready to ingest documents.\n")
+        
+        # Update index size on init
+        self.after(500, self.update_index_size)
 
-    def do_ingest(self):
-        """Trigger file ingestion (non-blocking)"""
-        path = self.entry.get().strip('"')
+    def browse_file(self):
+        """Open file/folder browser dialog"""
+        from tkinter import filedialog
+        
+        # Ask if file or folder
+        choice = filedialog.askdirectory(title="Select Folder to Ingest")
+        
+        if not choice:
+            # Try file dialog instead
+            choice = filedialog.askopenfilename(
+                title="Select File to Ingest",
+                filetypes=[
+                    ("Text files", "*.txt"),
+                    ("PDF files", "*.pdf"),
+                    ("All files", "*.*")
+                ]
+            )
+        
+        if choice:
+            self.path_entry.delete(0, "end")
+            self.path_entry.insert(0, choice)
+            self.log_progress(f"Selected: {choice}")
+
+    def ingest_path(self):
+        """Ingest path (file or directory)"""
+        path = self.path_entry.get().strip('" ')
         
         if not path or not os.path.exists(path):
-            self.output.insert("end", f"[!] Invalid path: {path}\n")
+            self.log_progress(f"[!] Invalid path: {path}", is_error=True)
             self.status.set_status("error", "✗ Invalid Path")
             return
         
-        self.ingest_btn.configure(state="disabled")
+        self._do_ingest(path, is_file=False)
+
+    def ingest_file(self):
+        """Ingest single file via upload"""
+        path = self.path_entry.get().strip('" ')
+        
+        if not path or not os.path.isfile(path):
+            self.log_progress(f"[!] Not a file: {path}", is_error=True)
+            self.status.set_status("error", "✗ Not a File")
+            return
+        
+        self._do_ingest(path, is_file=True)
+
+    def _do_ingest(self, path: str, is_file: bool = False):
+        """Common ingestion logic"""
+        # Disable buttons
+        self.ingest_path_btn.configure(state="disabled")
+        self.ingest_file_btn.configure(state="disabled")
+        self.browse_btn.configure(state="disabled")
+        
         self.status.set_status("info", "⏳ Ingesting...")
-        self.output.insert("end", f"\n[→] Starting ingestion: {path}\n")
+        self.log_progress(f"[→] Starting ingestion: {path}")
         self.app.active_operations += 1
         
         def run():
             try:
-                r = requests.post(
-                    "http://localhost:8000/ingest-path",
-                    json={"path": path},
-                    timeout=60
-                )
+                if is_file:
+                    # Upload file
+                    with open(path, 'rb') as f:
+                        files = {'f': (os.path.basename(path), f)}
+                        r = requests.post(
+                            "http://localhost:8000/ingest-file",
+                            files=files,
+                            timeout=120
+                        )
+                else:
+                    # Ingest path
+                    r = requests.post(
+                        "http://localhost:8000/ingest-path",
+                        json={"path": path},
+                        timeout=120
+                    )
                 
                 def update_ui():
                     self.app.active_operations -= 1
                     if r.ok:
                         result = r.json()
-                        self.output.insert("end", f"[+] Success! {result.get('message', '')}\n")
+                        self.log_progress(f"[+] Success! {result.get('message', 'Ingested')}")
                         self.status.set_status("ok", "✓ Complete")
+                        
+                        # Update index size
+                        self.update_index_size()
                     else:
-                        self.output.insert("end", f"[x] Error {r.status_code}\n")
+                        self.log_progress(f"[x] Error {r.status_code}: {r.text[:100]}", is_error=True)
                         self.status.set_status("error", "✗ Failed")
-                    self.ingest_btn.configure(state="normal")
+                    
+                    # Re-enable buttons
+                    self.ingest_path_btn.configure(state="normal")
+                    self.ingest_file_btn.configure(state="normal")
+                    self.browse_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
                 
@@ -631,13 +746,47 @@ class IngestTab(ctk.CTkFrame):
                 
                 def update_ui():
                     self.app.active_operations -= 1
-                    self.output.insert("end", f"[x] Error: {e}\n")
+                    self.log_progress(f"[x] Error: {e}", is_error=True)
                     self.status.set_status("error", "✗ Error")
-                    self.ingest_btn.configure(state="normal")
+                    
+                    # Re-enable buttons
+                    self.ingest_path_btn.configure(state="normal")
+                    self.ingest_file_btn.configure(state="normal")
+                    self.browse_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
         
         threading.Thread(target=run, daemon=True).start()
+
+    def log_progress(self, message: str, is_error: bool = False):
+        """Append timestamped message to progress log"""
+        timestamp = time.strftime("%H:%M:%S")
+        prefix = "[ERROR]" if is_error else "[INFO]"
+        self.output.insert("end", f"[{timestamp}] {prefix} {message}\n")
+        self.output.see("end")  # Auto-scroll to bottom
+
+    def update_index_size(self):
+        """Update index size display"""
+        def fetch():
+            try:
+                chunks_file = os.path.join(BASE_DIR, "vector_store", "chunks.json")
+                if os.path.exists(chunks_file):
+                    import json
+                    with open(chunks_file, 'r', encoding='utf-8') as f:
+                        chunks = json.load(f)
+                    
+                    count = len(chunks)
+                    self.after(0, lambda: self.index_size_label.configure(
+                        text=f"Index: {count:,} chunks"
+                    ))
+                else:
+                    self.after(0, lambda: self.index_size_label.configure(
+                        text="Index: Not built"
+                    ))
+            except Exception as e:
+                log(f"UI: Failed to read index size: {e}", "UI")
+        
+        threading.Thread(target=fetch, daemon=True).start()
 
 
 class QueryTab(ctk.CTkFrame):
