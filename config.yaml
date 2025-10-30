@@ -29,3 +29,33 @@ hybrid_mode: true  # true or false (1 or 0)
 # Data Directories
 data_dir: data
 
+# Academic Research Module
+academic:
+  enabled: true
+  providers:
+    openalex:
+      enabled: true
+      polite_email: "julian.poopat@gmail.com"
+    crossref:
+      enabled: true
+      polite_email: "julian.poopat@gmail.com"
+    arxiv:
+      enabled: true
+    semanticscholar:
+      enabled: false
+      api_key: ""  # Optional: set via env var S2_API_KEY
+    unpaywall:
+      enabled: true
+      email: "julian.poopat@gmail.com"
+  citations:
+    style: "harvard-cite-them-right"
+    locale: "en-GB"
+  retrieval:
+    dense_model: "sentence-transformers/all-MiniLM-L6-v2"
+    bm25_impl: "rank_bm25"  # or "bm25s" for faster alternative
+    rrf_k: 60  # Reciprocal Rank Fusion parameter
+    top_k: 12  # Number of papers to retrieve
+  grobid:
+    url: "http://localhost:8070"
+    enabled: true
+
