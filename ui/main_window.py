@@ -20,6 +20,13 @@ from core.gpu import get_gpu_status
 from core.config import CFG
 from logger import log
 
+# Import cloud bridge
+try:
+    from core.cloud_bridge import bridge
+    BRIDGE_AVAILABLE = True
+except ImportError:
+    BRIDGE_AVAILABLE = False
+
 apply_theme()
 
 
@@ -90,7 +97,7 @@ class Sidebar(ctk.CTkFrame):
         
         # Navigation buttons
         self.buttons = []
-        for name in ["Ingest", "Query", "System", "Logs"]:
+        for name in ["Ingest", "Query", "System", "Logs", "Bridge"]:
             b = ctk.CTkButton(
                 self,
                 text=name,
@@ -116,6 +123,7 @@ class Container(ctk.CTkFrame):
             "Query": QueryTab(self),
             "System": SystemTab(self),
             "Logs": LogsTab(self),
+            "Bridge": BridgeTab(self),
         }
         
         # Place all tabs in same location
@@ -454,6 +462,239 @@ class LogsTab(ctk.CTkFrame):
         
         # Schedule next refresh (after callback)
         self.after(4000, self.refresh)
+
+
+class BridgeTab(ctk.CTkFrame):
+    """Cloud Bridge tab for health monitoring and backup controls"""
+    
+    def __init__(self, master):
+        super().__init__(master)
+        
+        # Title
+        ctk.CTkLabel(self, text="Cloud Bridge", font=("Segoe UI", 18)).pack(pady=10)
+        
+        # Bridge availability
+        if not BRIDGE_AVAILABLE:
+            ctk.CTkLabel(
+                self,
+                text="⚠️ Cloud Bridge not available",
+                text_color="#ff6b6b"
+            ).pack(pady=20)
+            return
+        
+        # Cloud URL display
+        cloud_url = os.getenv("CLOUD_URL", "Not configured")
+        ctk.CTkLabel(
+            self,
+            text=f"Cloud URL: {cloud_url}",
+            text_color="#999"
+        ).pack(pady=5)
+        
+        # Status label
+        self.status_label = ctk.CTkLabel(self, text="⏳ Checking...", text_color="#999")
+        self.status_label.pack(pady=10)
+        
+        # Control buttons frame
+        controls_frame = ctk.CTkFrame(self)
+        controls_frame.pack(pady=20)
+        
+        # Test event button
+        self.test_btn = ctk.CTkButton(
+            controls_frame,
+            text="Send Test Event",
+            command=self.send_test_event,
+            width=180
+        )
+        self.test_btn.grid(row=0, column=0, padx=10, pady=5)
+        
+        # Push backup button
+        self.backup_btn = ctk.CTkButton(
+            controls_frame,
+            text="Push Vector Backup",
+            command=self.push_backup,
+            width=180
+        )
+        self.backup_btn.grid(row=0, column=1, padx=10, pady=5)
+        
+        # Auto backup toggle
+        self.auto_backup_var = ctk.BooleanVar(value=self.load_auto_backup_setting())
+        self.auto_backup_toggle = ctk.CTkCheckBox(
+            controls_frame,
+            text="Auto Backup on Ingest",
+            variable=self.auto_backup_var,
+            command=self.toggle_auto_backup
+        )
+        self.auto_backup_toggle.grid(row=1, column=0, columnspan=2, pady=10)
+        
+        # Output console
+        self.output = ctk.CTkTextbox(self, wrap="word", height=400)
+        self.output.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        self.output.insert("end", "Cloud Bridge Status Monitor\n\n")
+        self.output.insert("end", f"URL: {cloud_url}\n")
+        self.output.insert("end", f"API Key: {'✓ Set' if os.getenv('CLOUD_KEY') else '✗ Not Set'}\n\n")
+        
+        # Start health checks
+        self.after(1000, self.check_health)
+    
+    def load_auto_backup_setting(self) -> bool:
+        """Load auto backup setting from config file"""
+        config_file = os.path.join(BASE_DIR, "ui", "config.json")
+        try:
+            if os.path.exists(config_file):
+                import json
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                return config.get("auto_backup", False)
+        except Exception as e:
+            log(f"UI: Error loading auto backup setting: {e}", "UI")
+        return False
+    
+    def save_auto_backup_setting(self, value: bool):
+        """Save auto backup setting to config file"""
+        config_file = os.path.join(BASE_DIR, "ui", "config.json")
+        try:
+            # Load existing config
+            config = {}
+            if os.path.exists(config_file):
+                import json
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            
+            # Update setting
+            config["auto_backup"] = value
+            
+            # Save
+            os.makedirs(os.path.dirname(config_file), exist_ok=True)
+            with open(config_file, 'w', encoding='utf-8') as f:
+                import json
+                json.dump(config, f, indent=2)
+            
+            # Set environment variable for current session
+            os.environ["AUTO_BACKUP"] = "true" if value else "false"
+            
+            log(f"UI: Auto backup set to {value}", "UI")
+        except Exception as e:
+            log(f"UI: Error saving auto backup setting: {e}", "UI")
+    
+    def toggle_auto_backup(self):
+        """Handle auto backup toggle"""
+        value = self.auto_backup_var.get()
+        self.save_auto_backup_setting(value)
+        status = "enabled" if value else "disabled"
+        self.output.insert("end", f"[•] Auto backup {status}\n")
+    
+    def check_health(self):
+        """Check cloud bridge health (non-blocking)"""
+        def check():
+            try:
+                health = bridge.health()
+                
+                def update_ui():
+                    if health.get("status") == "ok":
+                        self.status_label.configure(text="🟢 Cloud Online", text_color="#4ade80")
+                    else:
+                        self.status_label.configure(text="🟡 Cloud Degraded", text_color="#fbbf24")
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                log(f"UI: Bridge health check failed: {e}", "UI")
+                
+                def update_ui():
+                    self.status_label.configure(text="🔴 Cloud Offline", text_color="#ef4444")
+                
+                self.after(0, update_ui)
+        
+        # Run in background
+        threading.Thread(target=check, daemon=True).start()
+        
+        # Schedule next check
+        self.after(5000, self.check_health)
+    
+    def send_test_event(self):
+        """Send test event to cloud bridge"""
+        self.test_btn.configure(state="disabled")
+        self.output.insert("end", "[→] Sending test event...\n")
+        
+        def run():
+            try:
+                result = bridge.send_event("ui_test", {
+                    "source": "ui",
+                    "timestamp": time.time(),
+                    "message": "Test event from RAGGITY UI"
+                })
+                
+                def update_ui():
+                    self.output.insert("end", f"[+] Test event sent! Response: {result.get('ack')}\n")
+                    self.test_btn.configure(state="normal")
+                
+                self.after(0, update_ui)
+                log("UI: Test event sent successfully", "UI")
+                
+            except Exception as e:
+                log(f"UI: Test event failed: {e}", "UI")
+                
+                def update_ui():
+                    self.output.insert("end", f"[x] Test event failed: {e}\n")
+                    self.test_btn.configure(state="normal")
+                
+                self.after(0, update_ui)
+        
+        threading.Thread(target=run, daemon=True).start()
+    
+    def push_backup(self):
+        """Push vector backup to cloud"""
+        self.backup_btn.configure(state="disabled")
+        self.output.insert("end", "[→] Pushing vector backup...\n")
+        
+        def run():
+            try:
+                # Find vector store path
+                vector_path = os.path.join(BASE_DIR, "vector_store", "faiss.index")
+                
+                if not os.path.exists(vector_path):
+                    def update_ui():
+                        self.output.insert("end", "[!] Vector index not found. Ingest documents first.\n")
+                        self.backup_btn.configure(state="normal")
+                    
+                    self.after(0, update_ui)
+                    return
+                
+                # Get file size
+                size_mb = os.path.getsize(vector_path) / (1024 * 1024)
+                
+                self.output.insert("end", f"[•] Uploading {size_mb:.2f} MB...\n")
+                
+                result = bridge.push_vector_backup(vector_path)
+                
+                def update_ui():
+                    self.output.insert("end", f"[+] Backup complete! Stored: {result.get('stored')}\n")
+                    self.output.insert("end", f"[•] Size: {result.get('size')} bytes\n")
+                    self.backup_btn.configure(state="normal")
+                
+                self.after(0, update_ui)
+                log(f"UI: Vector backup pushed ({size_mb:.2f} MB)", "UI")
+                
+            except FileNotFoundError as e:
+                log(f"UI: Backup file not found: {e}", "UI")
+                
+                def update_ui():
+                    self.output.insert("end", f"[x] File not found: {e}\n")
+                    self.backup_btn.configure(state="normal")
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                log(f"UI: Backup failed: {e}", "UI")
+                
+                def update_ui():
+                    self.output.insert("end", f"[x] Backup failed: {e}\n")
+                    self.backup_btn.configure(state="normal")
+                
+                self.after(0, update_ui)
+        
+        threading.Thread(target=run, daemon=True).start()
 
 
 if __name__ == "__main__":
