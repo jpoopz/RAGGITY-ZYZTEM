@@ -1485,13 +1485,19 @@ class BridgeTab(ctk.CTkFrame):
         title = ctk.CTkLabel(self, text="Cloud Bridge", font=heading())
         title.pack(pady=20)
         
+        self.auto_backup_enabled = False
+        self.config_file = os.path.join(BASE_DIR, "ui", "config.json")
+        
+        # Load saved config
+        self.load_config()
+        
         if not BRIDGE_AVAILABLE:
             Card(self).pack(padx=20, pady=20)
             ctk.CTkLabel(
                 self,
                 text="⚠️ Cloud Bridge not available",
                 font=subheading(),
-                text_color=STATUS_WARN
+                text_color=STATUS_WARNING
             ).pack(pady=50)
             return
         
@@ -1618,23 +1624,449 @@ class BridgeTab(ctk.CTkFrame):
 
 
 class CLO3DTab(ctk.CTkFrame):
-    """CLO 3D module placeholder"""
+    """CLO 3D Integration control panel"""
     
     def __init__(self, parent, app):
         super().__init__(parent, fg_color=DARK_BG)
+        self.app = app
+        self.client = None
+        self.connected = False
         
+        # Import CLO client
+        try:
+            from modules.clo_companion.clo_client import CLOClient
+            from modules.clo_companion.config import CLO_HOST, CLO_PORT
+            self.CLOClient = CLOClient
+            self.default_host = CLO_HOST
+            self.default_port = CLO_PORT
+            self.clo_available = True
+        except ImportError:
+            self.clo_available = False
+        
+        # Title
         title = ctk.CTkLabel(self, text="CLO 3D Integration", font=heading())
         title.pack(pady=20)
         
-        card = Card(self)
-        card.pack(padx=20, pady=20)
+        if not self.clo_available:
+            error_card = Card(self)
+            error_card.pack(padx=20, pady=20, fill="both", expand=True)
+            ctk.CTkLabel(
+                error_card,
+                text="⚠️ CLO companion module not available",
+                font=subheading(),
+                text_color=STATUS_WARNING
+            ).pack(pady=50)
+            return
         
-        ctk.CTkLabel(
-            card,
-            text="CLO 3D module features coming soon",
-            font=subheading(),
+        # Connection panel
+        conn_card = Card(self)
+        conn_card.pack(padx=20, pady=10, fill="x")
+        
+        ctk.CTkLabel(conn_card, text="Connection", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        
+        # Host and port fields
+        config_frame = ctk.CTkFrame(conn_card, fg_color="transparent")
+        config_frame.pack(pady=5, padx=20, fill="x")
+        
+        ctk.CTkLabel(config_frame, text="Host:", font=body(), text_color=TEXT_SECONDARY).pack(side="left", padx=(0, 5))
+        
+        self.host_entry = ctk.CTkEntry(config_frame, width=150, font=body())
+        self.host_entry.insert(0, self.default_host)
+        self.host_entry.pack(side="left", padx=5)
+        
+        ctk.CTkLabel(config_frame, text="Port:", font=body(), text_color=TEXT_SECONDARY).pack(side="left", padx=(20, 5))
+        
+        self.port_entry = ctk.CTkEntry(config_frame, width=80, font=body())
+        self.port_entry.insert(0, str(self.default_port))
+        self.port_entry.pack(side="left", padx=5)
+        
+        # Connect button
+        self.connect_btn = ctk.CTkButton(
+            config_frame,
+            text="🔌 Connect",
+            command=self.toggle_connection,
+            width=120,
+            height=32,
+            font=body(),
+            fg_color=ACCENT
+        )
+        self.connect_btn.pack(side="left", padx=20)
+        
+        # Status
+        self.conn_status = StatusLabel(conn_card, status="info", text="Disconnected")
+        self.conn_status.pack(pady=10)
+        
+        # Actions panel
+        actions_card = Card(self)
+        actions_card.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        ctk.CTkLabel(actions_card, text="Actions", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        
+        # Action buttons grid
+        btn_grid = ctk.CTkFrame(actions_card, fg_color="transparent")
+        btn_grid.pack(pady=10, padx=20, fill="x")
+        
+        # Row 1: Import and Export
+        self.import_btn = ctk.CTkButton(
+            btn_grid,
+            text="📁 Import Garment",
+            command=self.import_garment,
+            width=180,
+            height=40,
+            font=body(),
+            state="disabled"
+        )
+        self.import_btn.grid(row=0, column=0, padx=5, pady=5)
+        
+        self.export_btn = ctk.CTkButton(
+            btn_grid,
+            text="💾 Export Garment",
+            command=self.export_garment,
+            width=180,
+            height=40,
+            font=body(),
+            state="disabled"
+        )
+        self.export_btn.grid(row=0, column=1, padx=5, pady=5)
+        
+        # Row 2: Simulation controls
+        sim_frame = ctk.CTkFrame(btn_grid, fg_color="transparent")
+        sim_frame.grid(row=1, column=0, columnspan=2, pady=10)
+        
+        ctk.CTkLabel(sim_frame, text="Simulation Steps:", font=body(), text_color=TEXT_SECONDARY).pack(side="left", padx=5)
+        
+        self.sim_steps = ctk.CTkEntry(sim_frame, width=80, font=body())
+        self.sim_steps.insert(0, "50")
+        self.sim_steps.pack(side="left", padx=5)
+        
+        self.sim_btn = ctk.CTkButton(
+            sim_frame,
+            text="▶️ Run Simulation",
+            command=self.run_simulation,
+            width=150,
+            height=35,
+            font=body(),
+            state="disabled",
+            fg_color=ACCENT
+        )
+        self.sim_btn.pack(side="left", padx=10)
+        
+        # Row 3: Screenshot
+        self.screenshot_btn = ctk.CTkButton(
+            btn_grid,
+            text="📷 Take Screenshot",
+            command=self.take_screenshot,
+            width=180,
+            height=40,
+            font=body(),
+            state="disabled"
+        )
+        self.screenshot_btn.grid(row=2, column=0, padx=5, pady=5)
+        
+        # Screenshot preview area
+        preview_frame = ctk.CTkFrame(actions_card, fg_color=CARD_BG, corner_radius=8)
+        preview_frame.pack(pady=10, padx=20, fill="x")
+        
+        ctk.CTkLabel(preview_frame, text="Last Screenshot:", font=body(), text_color=TEXT_SECONDARY).pack(pady=5, padx=10, anchor="w")
+        
+        self.screenshot_preview = ctk.CTkLabel(
+            preview_frame,
+            text="No screenshot yet",
+            font=small(),
             text_color=TEXT_SECONDARY
-        ).pack(pady=50, padx=50)
+        )
+        self.screenshot_preview.pack(pady=5, padx=10)
+        
+        # Output log
+        ctk.CTkLabel(actions_card, text="Activity Log", font=subheading()).pack(pady=(15, 5), padx=20, anchor="w")
+        
+        self.output = ctk.CTkTextbox(actions_card, font=mono(), height=150)
+        self.output.pack(fill="both", expand=True, padx=20, pady=10)
+        self.output.insert("1.0", "CLO 3D Integration ready.\nConnect to CLO bridge to begin.\n")
+
+    def log_output(self, message: str, is_error: bool = False):
+        """Append timestamped message to output log"""
+        timestamp = time.strftime("%H:%M:%S")
+        prefix = "✗" if is_error else "✓"
+        self.output.insert("end", f"[{timestamp}] {prefix} {message}\n")
+        self.output.see("end")
+
+    def toggle_connection(self):
+        """Toggle connection to CLO bridge"""
+        if self.connected:
+            self.disconnect()
+        else:
+            self.connect()
+
+    def connect(self):
+        """Connect to CLO bridge listener"""
+        self.connect_btn.configure(state="disabled", text="Connecting...")
+        self.app.active_operations += 1
+        
+        def run():
+            try:
+                host = self.host_entry.get().strip()
+                port_str = self.port_entry.get().strip()
+                
+                try:
+                    port = int(port_str)
+                except ValueError:
+                    def update_ui():
+                        self.app.active_operations -= 1
+                        self.conn_status.set_status("error", "Invalid port number")
+                        self.connect_btn.configure(state="normal", text="🔌 Connect")
+                        self.log_output(f"Invalid port: {port_str}", is_error=True)
+                    self.after(0, update_ui)
+                    return
+                
+                # Create client
+                self.client = self.CLOClient(host=host, port=port)
+                result = self.client.connect()
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    
+                    if result["ok"]:
+                        self.connected = True
+                        self.conn_status.set_status("ok", f"🟢 Connected to {host}:{port}")
+                        self.connect_btn.configure(text="🔌 Disconnect", fg_color=STATUS_WARNING)
+                        
+                        # Enable action buttons
+                        self.import_btn.configure(state="normal")
+                        self.export_btn.configure(state="normal")
+                        self.sim_btn.configure(state="normal")
+                        self.screenshot_btn.configure(state="normal")
+                        
+                        self.log_output(f"Connected to CLO bridge at {host}:{port}")
+                        log(f"UI: Connected to CLO bridge at {host}:{port}", "UI")
+                    else:
+                        self.connected = False
+                        self.conn_status.set_status("error", "🔴 Connection failed")
+                        self.connect_btn.configure(state="normal", text="🔌 Connect")
+                        error = result.get("error", "Unknown error")
+                        self.log_output(f"Connection failed: {error}", is_error=True)
+                    
+                    self.connect_btn.configure(state="normal")
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                log(f"UI: CLO connection error: {e}", "UI")
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.conn_status.set_status("error", "🔴 Error")
+                    self.connect_btn.configure(state="normal", text="🔌 Connect")
+                    self.log_output(f"Connection error: {str(e)}", is_error=True)
+                
+                self.after(0, update_ui)
+        
+        threading.Thread(target=run, daemon=True).start()
+
+    def disconnect(self):
+        """Disconnect from CLO bridge"""
+        self.connected = False
+        self.client = None
+        
+        self.conn_status.set_status("info", "Disconnected")
+        self.connect_btn.configure(text="🔌 Connect", fg_color=ACCENT)
+        
+        # Disable action buttons
+        self.import_btn.configure(state="disabled")
+        self.export_btn.configure(state="disabled")
+        self.sim_btn.configure(state="disabled")
+        self.screenshot_btn.configure(state="disabled")
+        
+        self.log_output("Disconnected from CLO bridge")
+
+    def import_garment(self):
+        """Import garment file into CLO"""
+        from tkinter import filedialog
+        
+        file_path = filedialog.askopenfilename(
+            title="Select Garment File",
+            filetypes=[
+                ("CLO Project", "*.zprj"),
+                ("OBJ Files", "*.obj"),
+                ("FBX Files", "*.fbx"),
+                ("All Files", "*.*")
+            ]
+        )
+        
+        if not file_path:
+            return
+        
+        self.import_btn.configure(state="disabled")
+        self.app.active_operations += 1
+        
+        def run():
+            try:
+                result = self.client.import_garment(file_path)
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.import_btn.configure(state="normal")
+                    
+                    if result["ok"]:
+                        self.log_output(f"Imported: {os.path.basename(file_path)}")
+                    else:
+                        error = result.get("error", "Unknown error")
+                        self.log_output(f"Import failed: {error}", is_error=True)
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                log(f"UI: Import error: {e}", "UI")
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.import_btn.configure(state="normal")
+                    self.log_output(f"Import error: {str(e)}", is_error=True)
+                
+                self.after(0, update_ui)
+        
+        threading.Thread(target=run, daemon=True).start()
+
+    def export_garment(self):
+        """Export garment from CLO"""
+        from tkinter import filedialog
+        
+        file_path = filedialog.asksaveasfilename(
+            title="Export Garment",
+            defaultextension=".zprj",
+            filetypes=[
+                ("CLO Project", "*.zprj"),
+                ("OBJ Files", "*.obj"),
+                ("FBX Files", "*.fbx"),
+                ("glTF", "*.gltf"),
+                ("All Files", "*.*")
+            ]
+        )
+        
+        if not file_path:
+            return
+        
+        # Determine format from extension
+        ext = os.path.splitext(file_path)[1].lower().lstrip('.')
+        format_map = {"zprj": "zprj", "obj": "obj", "fbx": "fbx", "gltf": "gltf"}
+        export_format = format_map.get(ext, "zprj")
+        
+        self.export_btn.configure(state="disabled")
+        self.app.active_operations += 1
+        
+        def run():
+            try:
+                result = self.client.export_garment(file_path, format=export_format)
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.export_btn.configure(state="normal")
+                    
+                    if result["ok"]:
+                        self.log_output(f"Exported to: {os.path.basename(file_path)}")
+                    else:
+                        error = result.get("error", "Unknown error")
+                        self.log_output(f"Export failed: {error}", is_error=True)
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                log(f"UI: Export error: {e}", "UI")
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.export_btn.configure(state="normal")
+                    self.log_output(f"Export error: {str(e)}", is_error=True)
+                
+                self.after(0, update_ui)
+        
+        threading.Thread(target=run, daemon=True).start()
+
+    def run_simulation(self):
+        """Run physics simulation in CLO"""
+        try:
+            steps = int(self.sim_steps.get())
+            if steps <= 0:
+                self.log_output("Simulation steps must be positive", is_error=True)
+                return
+        except ValueError:
+            self.log_output("Invalid simulation steps value", is_error=True)
+            return
+        
+        self.sim_btn.configure(state="disabled")
+        self.app.active_operations += 1
+        
+        def run():
+            try:
+                result = self.client.run_simulation(steps=steps)
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.sim_btn.configure(state="normal")
+                    
+                    if result["ok"]:
+                        self.log_output(f"Simulation completed: {steps} steps")
+                    else:
+                        error = result.get("error", "Unknown error")
+                        self.log_output(f"Simulation failed: {error}", is_error=True)
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                log(f"UI: Simulation error: {e}", "UI")
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.sim_btn.configure(state="normal")
+                    self.log_output(f"Simulation error: {str(e)}", is_error=True)
+                
+                self.after(0, update_ui)
+        
+        threading.Thread(target=run, daemon=True).start()
+
+    def take_screenshot(self):
+        """Take screenshot of CLO viewport"""
+        # Create exports directory
+        export_dir = os.path.join(BASE_DIR, "exports", "clo_shots")
+        os.makedirs(export_dir, exist_ok=True)
+        
+        # Generate filename
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        filename = f"clo_screenshot_{timestamp}.png"
+        filepath = os.path.join(export_dir, filename)
+        
+        self.screenshot_btn.configure(state="disabled")
+        self.app.active_operations += 1
+        
+        def run():
+            try:
+                result = self.client.take_screenshot(filepath, width=1280, height=720)
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.screenshot_btn.configure(state="normal")
+                    
+                    if result["ok"]:
+                        self.log_output(f"Screenshot saved: {filename}")
+                        self.screenshot_preview.configure(text=f"📸 {filename}")
+                        log(f"UI: CLO screenshot saved to {filepath}", "UI")
+                    else:
+                        error = result.get("error", "Unknown error")
+                        self.log_output(f"Screenshot failed: {error}", is_error=True)
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                log(f"UI: Screenshot error: {e}", "UI")
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.screenshot_btn.configure(state="normal")
+                    self.log_output(f"Screenshot error: {str(e)}", is_error=True)
+                
+                self.after(0, update_ui)
+        
+        threading.Thread(target=run, daemon=True).start()
 
 
 def exception_hook(exc_type, exc_value, exc_traceback):
