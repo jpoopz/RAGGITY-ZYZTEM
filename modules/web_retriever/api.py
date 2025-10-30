@@ -16,13 +16,25 @@ from flask_cors import CORS
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 try:
-    from logger import log
+    from logger import get_logger
+    log = get_logger("web_retriever_api")
 except ImportError:
-    def log(msg, category="WEB_RETRIEVER"):
-        print(f"[{category}] {msg}")
+    class DummyLogger:
+        def info(self, msg): print(f"[WEB_RETRIEVER] {msg}")
+        def error(self, msg): print(f"[WEB_RETRIEVER] ERROR: {msg}")
+        def warning(self, msg): print(f"[WEB_RETRIEVER] WARNING: {msg}")
+    log = DummyLogger()
 
 from core.config_manager import get_module_config, get_suite_config
 from core.auth_helper import require_auth_token
+
+# Import web search function
+try:
+    from modules.web_retriever.web_search import web_search, scrape_url
+    WEB_SEARCH_AVAILABLE = True
+except ImportError as e:
+    log.warning(f"web_search module not available: {e}")
+    WEB_SEARCH_AVAILABLE = False
 
 app = Flask(__name__)
 
@@ -36,14 +48,82 @@ module_config = get_module_config("web_retriever")
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
+    # Check Cursor bridge connectivity
+    cursor_bridge_healthy = False
+    if WEB_SEARCH_AVAILABLE:
+        try:
+            from modules.cursor_bridge.client import get_cursor_bridge_client
+            client = get_cursor_bridge_client()
+            cursor_bridge_healthy = client.health_check()
+        except:
+            pass
+    
     return jsonify({
         "status": "healthy",
         "module_id": "web_retriever",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "uptime_seconds": 0,
-        "clo3d_connected": False,
+        "cursor_bridge_connected": cursor_bridge_healthy,
+        "web_search_available": WEB_SEARCH_AVAILABLE,
         "enabled": module_config.get("enabled", False)
     })
+
+@app.route('/search', methods=['POST'])
+@require_auth_token
+def search():
+    """Web search endpoint using Cursor bridge"""
+    try:
+        data = request.json or {}
+        query = data.get('query', '')
+        max_results = data.get('max_results', 5)
+        
+        if not query:
+            log.warning("Search request missing query")
+            return jsonify({"error": "Query is required"}), 400
+        
+        if not WEB_SEARCH_AVAILABLE:
+            log.error("Web search not available")
+            return jsonify({"error": "Web search module not available"}), 503
+        
+        log.info(f"Processing search request: {query[:100]}...")
+        
+        # Use web_search function with rate limiting
+        result = web_search(query, max_results=max_results)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        log.error(f"Error in search endpoint: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/scrape', methods=['POST'])
+@require_auth_token
+def scrape():
+    """Scrape URL endpoint using Cursor bridge"""
+    try:
+        data = request.json or {}
+        url = data.get('url', '')
+        
+        if not url:
+            log.warning("Scrape request missing URL")
+            return jsonify({"error": "URL is required"}), 400
+        
+        if not WEB_SEARCH_AVAILABLE:
+            log.error("Web search not available")
+            return jsonify({"error": "Web scraping module not available"}), 503
+        
+        log.info(f"Processing scrape request: {url[:80]}...")
+        
+        # Use scrape_url function with rate limiting
+        result = scrape_url(url)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        log.error(f"Error in scrape endpoint: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/summarize_web', methods=['POST'])
 @require_auth_token
@@ -73,7 +153,7 @@ def summarize_web():
             return _local_retrieve(query, url)
         
     except Exception as e:
-        log(f"Error in summarize_web: {e}", "WEB_RETRIEVER")
+        log.error(f"Error in summarize_web: {e}")
         return jsonify({"error": str(e)}), 500
 
 def _remote_retrieve(query, url, remote_url):
@@ -111,9 +191,9 @@ def _remote_retrieve(query, url, remote_url):
                 "fallback_to_local": True
             }), response.status_code
             
-    except Exception as e:
-        log(f"Remote retrieve failed, falling back to local: {e}", "WEB_RETRIEVER", level="WARNING")
-        return _local_retrieve(query, url)
+        except Exception as e:
+            log.warning(f"Remote retrieve failed, falling back to local: {e}")
+            return _local_retrieve(query, url)
 
 def _local_retrieve(query, url):
     """Local web retrieval using DuckDuckGo/SerpAPI + newspaper3k"""
@@ -153,7 +233,7 @@ def _local_retrieve(query, url):
                     "text_length": len(text)
                 })
             except Exception as e:
-                log(f"Error fetching URL: {e}", "WEB_RETRIEVER", level="ERROR")
+                log.error(f"Error fetching URL: {e}")
                 return jsonify({
                     "status": "error",
                     "message": f"Failed to fetch URL: {str(e)}"
@@ -182,7 +262,7 @@ def _local_retrieve(query, url):
                 })
                 
             except ImportError:
-                log("duckduckgo_search not available", "WEB_RETRIEVER", level="WARNING")
+                log.warning("duckduckgo_search not available")
                 # Fallback: use simple web search API
                 return jsonify({
                     "status": "partial",
@@ -197,7 +277,7 @@ def _local_retrieve(query, url):
         }), 400
         
     except Exception as e:
-        log(f"Error in local retrieve: {e}", "WEB_RETRIEVER", level="ERROR")
+        log.error(f"Error in local retrieve: {e}")
         return jsonify({
             "status": "error",
             "message": str(e)
@@ -221,7 +301,7 @@ Provide a concise summary with key points."""
         return summary if summary else "Failed to generate summary"
         
     except Exception as e:
-        log(f"Error summarizing with LLM: {e}", "WEB_RETRIEVER", level="ERROR")
+        log.error(f"Error summarizing with LLM: {e}")
         return text[:500] + "..." if len(text) > 500 else text
 
 if __name__ == '__main__':
@@ -229,6 +309,9 @@ if __name__ == '__main__':
     host = suite_config.get("security", {}).get("bind_localhost_only", True)
     host_addr = "127.0.0.1" if host else "0.0.0.0"
     
-    log(f"Starting Web Retriever API on {host_addr}:{port}", "WEB_RETRIEVER")
+    log.info(f"Starting Web Retriever API on {host_addr}:{port}")
+    log.info(f"Web search available: {WEB_SEARCH_AVAILABLE}")
+    log.info("Endpoints: /search, /scrape, /summarize_web, /health")
+    
     app.run(host=host_addr, port=port, debug=False)
 
