@@ -27,8 +27,6 @@ try:
 except ImportError:
     BRIDGE_AVAILABLE = False
 
-apply_theme()
-
 
 class RaggityUI(ctk.CTk):
     """Main application window"""
@@ -698,6 +696,7 @@ class BridgeTab(ctk.CTkFrame):
 
 
 if __name__ == "__main__":
+    apply_theme()
     log("UI: Starting RAGGITY ZYZTEM 2.0", "UI")
     app = RaggityUI()
     app.mainloop()

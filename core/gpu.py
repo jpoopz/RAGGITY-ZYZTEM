@@ -47,7 +47,7 @@ def get_gpu_status() -> Dict:
         # Try to get temperature (may not be available on all systems)
         try:
             temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
-        except:
+        except Exception:
             temp = None
         
         # Try to get driver version
@@ -55,7 +55,7 @@ def get_gpu_status() -> Dict:
             driver_version = pynvml.nvmlSystemGetDriverVersion()
             if isinstance(driver_version, bytes):
                 driver_version = driver_version.decode('utf-8')
-        except:
+        except Exception:
             driver_version = None
         
         pynvml.nvmlShutdown()

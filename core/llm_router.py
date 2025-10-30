@@ -62,7 +62,7 @@ class LLMRouter:
         try:
             response = requests.get("http://127.0.0.1:11434/api/health", timeout=2)
             return response.status_code == 200
-        except:
+        except requests.exceptions.RequestException:
             return False
     
     def _call_local_ollama(self, messages: List[Dict], model: str = "llama3.2") -> Optional[Dict]:
@@ -146,8 +146,8 @@ class LLMRouter:
             
             with open(self.usage_log, "a", encoding="utf-8") as f:
                 f.write(log_entry)
-        except:
-            pass
+        except (OSError, IOError) as e:
+            log(f"Failed to write usage log: {e}", "LLM_ROUTER")
     
     def _check_fallback_status(self):
         """Check and update fallback status"""

@@ -72,8 +72,8 @@ class EventBus:
                 n8n = get_n8n()
                 if n8n.config.get("enabled"):
                     n8n.send_event(event_type, sender, data)
-            except:
-                pass  # n8n integration not available or disabled
+            except Exception as e:
+                log(f"n8n event send failed: {e}", "EVENT_BUS")
     
     def subscribe(self, event_type, callback):
         """

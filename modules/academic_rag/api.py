@@ -399,8 +399,8 @@ def chat_completions():
             prefers_concise = memory.recall("julian", "prefers_concise", False)
             if prefers_concise:
                 reasoning_mode = "Concise"
-        except:
-            pass
+        except Exception as e:
+            log.warning(f"Memory manager unavailable: {e}")
         
         # Build context graph
         try:
@@ -547,9 +547,9 @@ if __name__ == '__main__':
     host_addr = "127.0.0.1" if host else "0.0.0.0"
     
     try:
-        log(f"🚀 Starting Academic RAG API server on {host_addr}:{port}", "API")
-    except:
-        log(f"Starting Academic RAG API server on {host_addr}:{port}", "API")
+        log.info(f"🚀 Starting Academic RAG API server on {host_addr}:{port}")
+    except UnicodeEncodeError:
+        log.info(f"Starting Academic RAG API server on {host_addr}:{port}")
     
     app.run(host=host_addr, port=port, debug=False)
 

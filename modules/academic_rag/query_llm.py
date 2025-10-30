@@ -51,7 +51,8 @@ try:
     module_config = get_module_config("academic_rag")
     VAULT_PATH = module_config.get("vault_path", os.path.expanduser(r"C:\Users\Julian Poopat\Documents\Obsidian"))
     NOTES_PATH = os.path.join(VAULT_PATH, module_config.get("notes_path", "Notes"))
-except:
+except ImportError as e:
+    log(f"Config manager not available: {e}", "LLM")
     VAULT_PATH = os.path.expanduser(r"C:\Users\Julian Poopat\Documents\Obsidian")
     NOTES_PATH = os.path.join(VAULT_PATH, "Notes")
 
@@ -63,7 +64,7 @@ try:
     module_config = get_module_config("academic_rag")
     rag_config = module_config.get("rag", {})
     OLLAMA_MODEL = rag_config.get("model", "llama3.2")
-except:
+except ImportError:
     OLLAMA_MODEL = "llama3.2"
 
 def retrieve_local_context(query, n_results=5):
@@ -263,8 +264,8 @@ End with a summary if appropriate.
         if "concise" in query.lower() or "brief" in query.lower():
             memory.remember("julian", "prefers_concise", True, category="preferences")
             log("Learned preference: prefers_concise=True", "LLM")
-    except:
-        pass
+    except Exception as e:
+        log(f"Memory manager unavailable: {e}", "LLM")
     
     # Get LLM response
     response = call_local_llm(prompt)
