@@ -17,6 +17,14 @@ from core.paths import ensure_dirs, get_data_dir
 from core.config import CFG
 from logger import get_logger
 
+# Import academic API routes
+try:
+    from modules.academic.api import router as academic_router
+    ACADEMIC_AVAILABLE = True
+except ImportError as e:
+    ACADEMIC_AVAILABLE = False
+    print(f"Academic module not available: {e}")
+
 # Import troubleshooter
 try:
     from modules.smart_troubleshooter.troubleshoot import troubleshoot
@@ -278,6 +286,12 @@ def system_stats():
             status_code=500,
             detail=f"System stats failed: {str(e)}"
         )
+
+
+# Include academic routes if available
+if ACADEMIC_AVAILABLE:
+    app.include_router(academic_router)
+    log.info("Academic module routes registered")
 
 
 if __name__ == "__main__":
