@@ -10,11 +10,18 @@ from pydantic import BaseModel
 
 from .providers import search_openalex, search_arxiv, search_semanticscholar, multi_search
 from .citations.harvard import cite_from_dois, work_to_csl, render_bibliography
+from .arxiv_helper import download_and_index, get_arxiv_pdf_url
 from logger import get_logger
 
 log = get_logger("academic_api")
 
 router = APIRouter(prefix="/academic", tags=["academic"])
+
+
+class DownloadArxivRequest(BaseModel):
+    """Request model for ArXiv download"""
+    arxiv_id: str
+    output_dir: str = "data/arxiv"
 
 
 class CiteRequest(BaseModel):
@@ -142,6 +149,27 @@ def resolve_pdf_url(doi: str, polite_email: str = "user@example.com"):
     
     except Exception as e:
         log.error(f"PDF resolution failed for {doi}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/download_arxiv")
+def download_arxiv_paper(request: DownloadArxivRequest):
+    """
+    Download ArXiv PDF and extract metadata via GROBID.
+    
+    Returns:
+        Dictionary with pdf_path, metadata, references, success
+    """
+    if not request.arxiv_id:
+        raise HTTPException(status_code=400, detail="arxiv_id required")
+    
+    try:
+        result = download_and_index(request.arxiv_id, request.output_dir)
+        
+        return result
+    
+    except Exception as e:
+        log.error(f"ArXiv download failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
