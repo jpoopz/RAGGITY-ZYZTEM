@@ -166,8 +166,21 @@ class CommandPalette(ctk.CTkToplevel):
             self.create_command_item(idx, cmd)
     
     def create_command_item(self, idx: int, cmd: Dict[str, Any]):
-        """Create a command list item"""
+        """Create a command list item with category grouping"""
         is_selected = idx == self.selected_index
+        
+        # Show category header if this is first item in category
+        category = cmd.get('category', '')
+        if idx == 0 or (idx > 0 and self.filtered_commands[idx-1].get('category') != category):
+            if category:
+                category_header = ctk.CTkLabel(
+                    self.commands_container,
+                    text=category.upper(),
+                    font=small(),
+                    text_color=TEXT_SECONDARY,
+                    anchor="w"
+                )
+                category_header.pack(fill="x", padx=10, pady=(10, 5) if idx > 0 else (0, 5))
         
         # Command frame
         frame = ctk.CTkFrame(
@@ -180,28 +193,34 @@ class CommandPalette(ctk.CTkToplevel):
         # Make clickable
         frame.bind("<Button-1>", lambda e, i=idx: self.select_and_execute(i))
         
+        # Command name and description
+        text_container = ctk.CTkFrame(frame, fg_color="transparent")
+        text_container.pack(side="left", fill="both", expand=True, padx=10, pady=8)
+        text_container.bind("<Button-1>", lambda e, i=idx: self.select_and_execute(i))
+        
         # Command name
         name_label = ctk.CTkLabel(
-            frame,
+            text_container,
             text=cmd['name'],
             font=body(),
             text_color="#000000" if is_selected else TEXT,
             anchor="w"
         )
-        name_label.pack(side="left", padx=10, pady=8, fill="x", expand=True)
+        name_label.pack(anchor="w")
         name_label.bind("<Button-1>", lambda e, i=idx: self.select_and_execute(i))
         
-        # Category badge (if present)
-        category = cmd.get('category', '')
-        if category:
-            category_label = ctk.CTkLabel(
-                frame,
-                text=f"[{category}]",
+        # Description (if present)
+        description = cmd.get('description', '')
+        if description:
+            desc_label = ctk.CTkLabel(
+                text_container,
+                text=description,
                 font=small(),
-                text_color="#000000" if is_selected else TEXT_SECONDARY
+                text_color="#333333" if is_selected else TEXT_SECONDARY,
+                anchor="w"
             )
-            category_label.pack(side="right", padx=10)
-            category_label.bind("<Button-1>", lambda e, i=idx: self.select_and_execute(i))
+            desc_label.pack(anchor="w")
+            desc_label.bind("<Button-1>", lambda e, i=idx: self.select_and_execute(i))
     
     def move_selection(self, delta: int):
         """Move selection up or down"""

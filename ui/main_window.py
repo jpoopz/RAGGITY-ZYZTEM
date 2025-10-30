@@ -173,74 +173,126 @@ class RaggityUI(ctk.CTk):
         self.after(100, self.update_spinner)
 
     def open_command_palette(self):
-        """Open command palette with Ctrl+K"""
+        """Open command palette with Ctrl+K - grouped by category"""
         commands = [
-            {
-                "name": "Ingest Path",
-                "action": lambda: self.sidebar.select_tab("Ingest"),
-                "category": "Documents",
-                "description": "Open Ingest tab to add documents"
-            },
-            {
-                "name": "Query Knowledge Base",
-                "action": lambda: self.sidebar.select_tab("Query"),
-                "category": "Query",
-                "description": "Ask questions about your documents"
-            },
+            # General actions
             {
                 "name": "Open Data Folder",
                 "action": self.open_data_folder,
-                "category": "Files",
-                "description": "Open data directory in explorer"
+                "category": "General",
+                "description": "Browse data directory in file explorer"
             },
             {
                 "name": "Open Logs Folder",
                 "action": self.open_logs_folder,
-                "category": "Files",
-                "description": "Open logs directory in explorer"
+                "category": "General",
+                "description": "Browse logs directory"
+            },
+            {
+                "name": "Open Exports Folder",
+                "action": self.open_exports_folder,
+                "category": "General",
+                "description": "Browse exported files"
+            },
+            
+            # RAG operations
+            {
+                "name": "Ingest Documents",
+                "action": lambda: self.sidebar.select_tab("Ingest"),
+                "category": "RAG",
+                "description": "Add documents to knowledge base"
+            },
+            {
+                "name": "Query Knowledge Base",
+                "action": lambda: self.sidebar.select_tab("Query"),
+                "category": "RAG",
+                "description": "Ask questions about documents"
             },
             {
                 "name": "Rebuild Index",
                 "action": self.rebuild_index,
-                "category": "Maintenance",
-                "description": "Reindex all documents"
+                "category": "RAG",
+                "description": "Reindex all documents from scratch"
+            },
+            {
+                "name": "Clear Vector Store",
+                "action": self.clear_vector_store,
+                "category": "RAG",
+                "description": "Delete all indexed data (destructive)"
+            },
+            
+            # CLO3D
+            {
+                "name": "Connect to CLO3D",
+                "action": lambda: self.sidebar.select_tab("CLO3D"),
+                "category": "CLO3D",
+                "description": "Manage CLO 3D bridge connection"
+            },
+            {
+                "name": "CLO3D Help",
+                "action": self.show_clo_help,
+                "category": "CLO3D",
+                "description": "View CLO integration setup guide"
+            },
+            
+            # Cloud Bridge
+            {
+                "name": "Cloud Bridge Status",
+                "action": lambda: self.sidebar.select_tab("Bridge"),
+                "category": "Bridge",
+                "description": "View cloud connection and backups"
+            },
+            {
+                "name": "Push Vector Backup",
+                "action": self.push_backup,
+                "category": "Bridge",
+                "description": "Backup vector store to cloud"
+            },
+            
+            # System & Diagnostics
+            {
+                "name": "System Monitor",
+                "action": lambda: self.sidebar.select_tab("System"),
+                "category": "System",
+                "description": "View CPU/RAM/GPU metrics"
+            },
+            {
+                "name": "Take System Snapshot",
+                "action": self.take_snapshot,
+                "category": "System",
+                "description": "Save current metrics to JSON"
             },
             {
                 "name": "Run Troubleshooter",
                 "action": self.run_troubleshooter,
-                "category": "Diagnostics",
-                "description": "Analyze logs for issues"
+                "category": "System",
+                "description": "Analyze logs for errors and fixes"
             },
             {
-                "name": "Take System Snapshot",
-                "action": lambda: self.sidebar.select_tab("System"),
-                "category": "Monitoring",
-                "description": "Go to System tab for snapshot"
-            },
-            {
-                "name": "Switch to Dashboard",
-                "action": lambda: self.sidebar.select_tab("Dashboard"),
-                "category": "Navigation"
-            },
-            {
-                "name": "Switch to Settings",
-                "action": lambda: self.sidebar.select_tab("Settings"),
-                "category": "Navigation"
-            },
-            {
-                "name": "Switch to Logs",
+                "name": "View Logs",
                 "action": lambda: self.sidebar.select_tab("Logs"),
-                "category": "Navigation"
+                "category": "System",
+                "description": "View application logs"
+            },
+            
+            # Settings & Help
+            {
+                "name": "Settings",
+                "action": lambda: self.sidebar.select_tab("Settings"),
+                "category": "Settings",
+                "description": "Configure vector store, models, theme"
             },
             {
-                "name": "Switch to Bridge",
-                "action": lambda: self.sidebar.select_tab("Bridge"),
-                "category": "Navigation"
+                "name": "Migrate Legacy Settings",
+                "action": self.migrate_settings,
+                "category": "Settings",
+                "description": "Import settings from old config files"
             },
             {
-                "name": "Switch to CLO3D",
-                "action": lambda: self.sidebar.select_tab("CLO3D"),
-                "category": "Navigation"
+                "name": "View README",
+                "action": self.open_readme,
+                "category": "Help",
+                "description": "Open documentation in browser"
             },
         ]
         
@@ -339,6 +391,78 @@ class RaggityUI(ctk.CTk):
         except Exception as e:
             log(f"UI: Failed to run troubleshooter: {e}", "UI")
             self.toast.show("Failed to run troubleshooter", "error")
+    
+    def open_exports_folder(self):
+        """Open exports folder"""
+        try:
+            exports_dir = os.path.join(BASE_DIR, "exports")
+            os.makedirs(exports_dir, exist_ok=True)
+            
+            if os.name == 'nt':
+                os.startfile(exports_dir)
+            else:
+                import subprocess
+                subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', exports_dir])
+            
+            self.toast.show("Exports folder opened", "success")
+        except Exception as e:
+            log(f"UI: Failed to open exports folder: {e}", "UI")
+            self.toast.show("Failed to open exports folder", "error")
+    
+    def clear_vector_store(self):
+        """Clear vector store (destructive)"""
+        # TODO: Add confirmation dialog
+        self.toast.show("Feature not yet implemented", "warn")
+    
+    def show_clo_help(self):
+        """Show CLO3D help"""
+        try:
+            readme_path = os.path.join(BASE_DIR, "modules", "clo_companion", "README.md")
+            if os.path.exists(readme_path):
+                if os.name == 'nt':
+                    os.startfile(readme_path)
+                else:
+                    import subprocess
+                    subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', readme_path])
+                self.toast.show("CLO help opened", "success")
+            else:
+                self.toast.show("CLO README not found", "error")
+        except Exception as e:
+            log(f"UI: Failed to open CLO help: {e}", "UI")
+            self.toast.show("Failed to open help", "error")
+    
+    def push_backup(self):
+        """Push vector backup via palette"""
+        self.sidebar.select_tab("Bridge")
+        self.toast.show("Go to Bridge tab to push backup", "info")
+    
+    def take_snapshot(self):
+        """Take system snapshot via palette"""
+        self.sidebar.select_tab("System")
+        self.toast.show("Go to System tab to take snapshot", "info")
+    
+    def migrate_settings(self):
+        """Migrate legacy settings"""
+        # TODO: Call /settings/migrate endpoint
+        self.sidebar.select_tab("Settings")
+        self.toast.show("Go to Settings tab for migration", "info")
+    
+    def open_readme(self):
+        """Open README in browser"""
+        try:
+            readme_path = os.path.join(BASE_DIR, "README.md")
+            if os.path.exists(readme_path):
+                if os.name == 'nt':
+                    os.startfile(readme_path)
+                else:
+                    import subprocess
+                    subprocess.Popen(['xdg-open' if sys.platform != 'darwin' else 'open', readme_path])
+                self.toast.show("README opened", "success")
+            else:
+                self.toast.show("README not found", "error")
+        except Exception as e:
+            log(f"UI: Failed to open README: {e}", "UI")
+            self.toast.show("Failed to open README", "error")
     
     def on_close(self):
         """Handle window close"""
