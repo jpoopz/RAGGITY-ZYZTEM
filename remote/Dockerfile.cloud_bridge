@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir fastapi uvicorn pyyaml
+
+# Copy application
+COPY remote/ remote/
+COPY core/ core/
+COPY logger.py .
+
+# Expose port
+EXPOSE 9000
+
+# Run server
+CMD ["uvicorn", "remote.cloud_bridge_server:app", "--host", "0.0.0.0", "--port", "9000"]
+

@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  cloud_bridge:
+    build:
+      context: ..
+      dockerfile: remote/Dockerfile.cloud_bridge
+    container_name: raggity_cloud_bridge
+    ports:
+      - "9000:9000"
+    environment:
+      - CLOUD_KEY=${CLOUD_KEY:-}
+      - BACKUP_DIR=/app/backups
+    volumes:
+      - ./backups:/app/backups
+    restart: unless-stopped
+    command: uvicorn remote.cloud_bridge_server:app --host 0.0.0.0 --port 9000
+

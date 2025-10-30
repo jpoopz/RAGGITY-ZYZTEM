@@ -1,350 +1,249 @@
 """
-Cloud Bridge Server - FastAPI server for Hostinger VPS
-Handles secure context sync, remote execution, and bi-directional replication
+Cloud Bridge Server - FastAPI receiver for remote VPS
+Receives events and vector backups from RAG System clients
 """
 
+from fastapi import FastAPI, Request, HTTPException
 import os
-import sys
-from datetime import datetime
-from pathlib import Path
-import gzip
 import json
+import base64
+import hashlib
+import time
 
-# Force UTF-8
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
+app = FastAPI(title="RAGGITY Cloud Bridge")
 
-try:
-    from fastapi import FastAPI, Request, HTTPException, Depends, Header
-    from fastapi.responses import JSONResponse
-    from pydantic import BaseModel
-    import uvicorn
-except ImportError:
-    print("ERROR: fastapi and uvicorn required for Cloud Bridge server")
-    print("Install with: pip install fastapi uvicorn")
-    sys.exit(1)
+# Configuration from environment
+API_KEY = os.getenv("CLOUD_KEY", "")
+BACKUP_DIR = os.getenv("BACKUP_DIR", "backups")
 
-try:
-    from cryptography.fernet import Fernet
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.asymmetric import rsa, padding
-    from cryptography.hazmat.primitives import serialization
-    ENCRYPTION_AVAILABLE = True
-except ImportError:
-    print("WARNING: cryptography not available, encryption disabled")
-    ENCRYPTION_AVAILABLE = False
+# Ensure backup directory exists
+os.makedirs(BACKUP_DIR, exist_ok=True)
 
-app = FastAPI(title="Julian Assistant Cloud Bridge", version="4.0.0")
 
-# Security
-VPS_AUTH_TOKEN = os.environ.get("VPS_AUTH_TOKEN", "")
-RSA_PRIVATE_KEY = None
-AES_KEY = None
-
-# Load RSA private key if available
-try:
-    if ENCRYPTION_AVAILABLE:
-        private_key_path = os.path.join(os.path.dirname(__file__), "keys", "private.pem")
-        if os.path.exists(private_key_path):
-            with open(private_key_path, 'rb') as f:
-                RSA_PRIVATE_KEY = serialization.load_pem_private_key(
-                    f.read(),
-                    password=None
-                )
-except Exception as e:
-    print(f"Warning: Could not load RSA key: {e}")
-
-# Load or generate AES key
-try:
-    if ENCRYPTION_AVAILABLE:
-        aes_key_path = os.path.join(os.path.dirname(__file__), "keys", "aes.key")
-        if os.path.exists(aes_key_path):
-            with open(aes_key_path, 'rb') as f:
-                AES_KEY = f.read()
-        else:
-            AES_KEY = Fernet.generate_key()
-            os.makedirs(os.path.dirname(aes_key_path), exist_ok=True)
-            with open(aes_key_path, 'wb') as f:
-                f.write(AES_KEY)
-except Exception as e:
-    print(f"Warning: Could not setup AES: {e}")
-
-def verify_token(authorization: str = Header(None)):
-    """Verify authorization token"""
-    if not VPS_AUTH_TOKEN:
-        return True  # No auth if not set
+def verify(req_json):
+    """
+    Verify request signature using HMAC-style signing
     
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header required")
+    Args:
+        req_json: Request JSON with signature and payload
+        
+    Raises:
+        HTTPException: If signature is invalid
+    """
+    sig = req_json.get("signature")
+    payload = req_json.get("payload", {})
     
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
+    # Recreate signature
+    body = json.dumps(payload, sort_keys=True)
+    ref = hashlib.sha256((API_KEY + body).encode()).hexdigest()
     
-    token = authorization.replace("Bearer ", "").strip()
-    if token != VPS_AUTH_TOKEN:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-    return True
+    if sig != ref:
+        print(f"[Bridge] Invalid signature: got {sig}, expected {ref}")
+        raise HTTPException(status_code=403, detail="Invalid signature")
 
-def decrypt_payload(encrypted_data: bytes) -> dict:
-    """Decrypt payload using AES"""
-    if not ENCRYPTION_AVAILABLE or not AES_KEY:
-        # Fallback: assume JSON
-        try:
-            return json.loads(encrypted_data.decode('utf-8'))
-        except:
-            return {}
-    
-    try:
-        fernet = Fernet(AES_KEY)
-        decrypted = fernet.decrypt(encrypted_data)
-        return json.loads(decrypted.decode('utf-8'))
-    except Exception as e:
-        print(f"Decryption error: {e}")
-        return {}
-
-def encrypt_payload(data: dict) -> bytes:
-    """Encrypt payload using AES"""
-    if not ENCRYPTION_AVAILABLE or not AES_KEY:
-        # Fallback: JSON
-        return json.dumps(data).encode('utf-8')
-    
-    try:
-        fernet = Fernet(AES_KEY)
-        return fernet.encrypt(json.dumps(data).encode('utf-8'))
-    except Exception as e:
-        print(f"Encryption error: {e}")
-        return json.dumps(data).encode('utf-8')
-
-class ContextPayload(BaseModel):
-    context_json: str
-    timestamp: str
-    user: str = "julian"
-
-class ExecuteRequest(BaseModel):
-    task: str
-    params: dict
-    encrypted: bool = False
-    payload: str = ""
 
 @app.get("/health")
-async def health():
+def health():
     """Health check endpoint"""
     return {
-        "status": "healthy",
-        "service": "Cloud Bridge Server",
-        "version": "4.0.0",
-        "encryption": ENCRYPTION_AVAILABLE,
-        "timestamp": datetime.now().isoformat()
+        "status": "ok",
+        "ts": time.time(),
+        "backup_dir": BACKUP_DIR,
+        "api_key_set": bool(API_KEY)
     }
 
-@app.post("/context/push")
-async def push_context(
-    request_data: ContextPayload,
-    authorized: bool = Depends(verify_token)
-):
-    """
-    Receive local context bundles from client
-    """
-    try:
-        # Store context locally
-        storage_dir = Path(os.path.expanduser("~/assistant/context_storage"))
-        storage_dir.mkdir(parents=True, exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        context_file = storage_dir / f"context_{timestamp}.json"
-        
-        context_data = json.loads(request_data.context_json)
-        
-        with open(context_file, 'w', encoding='utf-8') as f:
-            json.dump(context_data, f, indent=2)
-        
-        # Compress if large
-        if context_file.stat().st_size > 2 * 1024 * 1024:  # > 2MB
-            compressed = storage_dir / f"context_{timestamp}.json.gz"
-            with open(context_file, 'rb') as f_in:
-                with gzip.open(compressed, 'wb') as f_out:
-                    f_out.writelines(f_in)
-            context_file.unlink()
-            context_file = compressed
-        
-        return {
-            "status": "success",
-            "stored_path": str(context_file),
-            "timestamp": request_data.timestamp
-        }
-        
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)}
-        )
 
-@app.get("/context/pull")
-async def pull_context(
-    user: str = "julian",
-    authorized: bool = Depends(verify_token)
-):
+@app.post("/events")
+async def events(req: Request):
     """
-    Send latest VPS context to local client
-    """
-    try:
-        storage_dir = Path(os.path.expanduser("~/assistant/context_storage"))
-        
-        # Get most recent context
-        contexts = sorted(
-            storage_dir.glob("context_*.json*"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True
-        )
-        
-        if not contexts:
-            return {
-                "status": "empty",
-                "context": None
-            }
-        
-        latest = contexts[0]
-        
-        # Read and decompress if needed
-        if latest.suffix == '.gz':
-            with gzip.open(latest, 'rt', encoding='utf-8') as f:
-                context_data = json.load(f)
-        else:
-            with open(latest, 'r', encoding='utf-8') as f:
-                context_data = json.load(f)
-        
-        return {
-            "status": "success",
-            "context": context_data,
-            "timestamp": datetime.fromtimestamp(latest.stat().st_mtime).isoformat()
-        }
-        
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)}
-        )
-
-@app.post("/execute")
-async def execute_task(
-    request_data: ExecuteRequest,
-    authorized: bool = Depends(verify_token)
-):
-    """
-    Remote task execution (LLM query, CLO render, backup push)
-    """
-    try:
-        # Decrypt payload if needed
-        if request_data.encrypted:
-            params = decrypt_payload(request_data.payload.encode('utf-8'))
-        else:
-            params = request_data.params
-        
-        task = request_data.task
-        
-        # Route to task handler
-        if task == "rag_query":
-            result = await handle_rag_query(params)
-        elif task == "clo_render":
-            result = await handle_clo_render(params)
-        elif task == "backup_push":
-            result = await handle_backup_push(params)
-        else:
-            return JSONResponse(
-                status_code=400,
-                content={"status": "error", "message": f"Unknown task: {task}"}
-            )
-        
-        return {
-            "status": "success",
-            "task": task,
-            "result": result,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)}
-        )
-
-async def handle_rag_query(params: dict):
-    """Handle remote RAG query execution"""
-    try:
-        query = params.get("query", "")
-        if not query:
-            return {"error": "Query required"}
-        
-        # Run LLM query (would use local Ollama or API)
-        # For now, return mock response
-        return {
-            "response": f"Remote LLM response for: {query}",
-            "source": "vps",
-            "model": "llama3.2"
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-async def handle_clo_render(params: dict):
-    """Handle remote CLO render execution"""
-    try:
-        prompt = params.get("prompt", "")
-        if not prompt:
-            return {"error": "Prompt required"}
-        
-        # Run CLO render (would use GPU on VPS)
-        # For now, return mock response
-        return {
-            "status": "rendered",
-            "obj_file": f"/tmp/rendered_{datetime.now().strftime('%Y%m%d_%H%M%S')}.obj",
-            "prompt": prompt,
-            "source": "vps"
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-async def handle_backup_push(params: dict):
-    """Handle backup upload to cloud storage"""
-    try:
-        backup_data = params.get("backup_data", "")
-        backup_name = params.get("backup_name", f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip")
-        
-        # Store backup
-        backup_dir = Path(os.path.expanduser("~/assistant/backups"))
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        backup_path = backup_dir / backup_name
-        
-        # Write backup (would decode from base64 in production)
-        with open(backup_path, 'wb') as f:
-            import base64
-            f.write(base64.b64decode(backup_data))
-        
-        return {
-            "status": "stored",
-            "backup_path": str(backup_path),
-            "size_mb": backup_path.stat().st_size / (1024 * 1024)
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.get("/ping")
-async def ping():
-    """Simple ping endpoint for latency check"""
-    return {
-        "status": "pong",
-        "timestamp": datetime.now().isoformat()
+    Receive events from clients
+    
+    Expected JSON:
+    {
+        "event": "document.indexed",
+        "payload": {...},
+        "ts": 1730304123.456,
+        "signature": "abc123..."
     }
+    """
+    data = await req.json()
+    
+    # Verify signature
+    verify(data)
+    
+    ev = data.get("event")
+    payload = data.get("payload")
+    ts = data.get("ts")
+    
+    print(f"[Bridge] event={ev} size={len(str(payload))} ts={ts}")
+    
+    # Optional: Store events to file for analytics
+    event_log = os.path.join(BACKUP_DIR, "events.log")
+    with open(event_log, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"event": ev, "payload": payload, "ts": ts}) + "\n")
+    
+    return {"ack": True, "event": ev}
+
+
+@app.post("/backup/vector")
+async def backup(req: Request):
+    """
+    Receive vector backup upload
+    
+    Expected JSON:
+    {
+        "file": "faiss.index",
+        "data": "base64_encoded_data",
+        "size": 1048576,
+        "checksum": "md5_hash"
+    }
+    """
+    data = await req.json()
+    
+    # Verify signature (payload is the data dict itself)
+    verify({"payload": data, "signature": data.get("signature", "")})
+    
+    fname = data.get("file")
+    b64_data = data.get("data")
+    expected_size = data.get("size")
+    expected_checksum = data.get("checksum")
+    
+    if not fname or not b64_data:
+        raise HTTPException(status_code=400, detail="Missing file or data")
+    
+    # Decode base64
+    try:
+        bdata = base64.b64decode(b64_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 data: {e}")
+    
+    # Verify checksum if provided
+    if expected_checksum:
+        actual_checksum = hashlib.md5(bdata).hexdigest()
+        if actual_checksum != expected_checksum:
+            print(f"[Bridge] Checksum mismatch: got {actual_checksum}, expected {expected_checksum}")
+            raise HTTPException(status_code=400, detail="Checksum mismatch")
+    
+    # Verify size if provided
+    if expected_size and len(bdata) != expected_size:
+        print(f"[Bridge] Size mismatch: got {len(bdata)}, expected {expected_size}")
+        raise HTTPException(status_code=400, detail="Size mismatch")
+    
+    # Save to backup directory
+    backup_path = os.path.join(BACKUP_DIR, fname)
+    
+    # Add timestamp to filename to keep history
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    backup_path_versioned = os.path.join(
+        BACKUP_DIR,
+        f"{timestamp}_{fname}"
+    )
+    
+    try:
+        with open(backup_path_versioned, "wb") as f:
+            f.write(bdata)
+        
+        # Also save as latest
+        with open(backup_path, "wb") as f:
+            f.write(bdata)
+        
+        print(f"[Bridge] Stored backup: {fname} ({len(bdata)} bytes)")
+        
+        return {
+            "stored": fname,
+            "size": len(bdata),
+            "checksum": hashlib.md5(bdata).hexdigest(),
+            "versioned_file": os.path.basename(backup_path_versioned)
+        }
+        
+    except Exception as e:
+        print(f"[Bridge] Error saving backup: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save backup: {e}")
+
+
+@app.get("/backup/vector/{filename}")
+async def get_backup(filename: str):
+    """
+    Download a vector backup
+    
+    Args:
+        filename: Name of backup file
+        
+    Returns:
+        Base64-encoded file data with checksum
+    """
+    backup_path = os.path.join(BACKUP_DIR, filename)
+    
+    if not os.path.exists(backup_path):
+        raise HTTPException(status_code=404, detail="Backup not found")
+    
+    try:
+        with open(backup_path, "rb") as f:
+            bdata = f.read()
+        
+        # Encode and checksum
+        b64_data = base64.b64encode(bdata).decode()
+        checksum = hashlib.md5(bdata).hexdigest()
+        
+        print(f"[Bridge] Sending backup: {filename} ({len(bdata)} bytes)")
+        
+        return {
+            "file": filename,
+            "data": b64_data,
+            "size": len(bdata),
+            "checksum": checksum
+        }
+        
+    except Exception as e:
+        print(f"[Bridge] Error reading backup: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to read backup: {e}")
+
+
+@app.get("/backup/list")
+async def list_backups():
+    """List all available backups"""
+    try:
+        files = []
+        for fname in os.listdir(BACKUP_DIR):
+            fpath = os.path.join(BACKUP_DIR, fname)
+            if os.path.isfile(fpath) and not fname.endswith(".log"):
+                stat = os.stat(fpath)
+                files.append({
+                    "filename": fname,
+                    "size": stat.st_size,
+                    "modified": stat.st_mtime
+                })
+        
+        # Sort by modification time (newest first)
+        files.sort(key=lambda x: x["modified"], reverse=True)
+        
+        return {
+            "backups": files,
+            "count": len(files),
+            "backup_dir": BACKUP_DIR
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list backups: {e}")
+
 
 if __name__ == "__main__":
-    port = int(os.environ.get("VPS_PORT", "8000"))
-    host = os.environ.get("VPS_HOST", "0.0.0.0")
+    import uvicorn
     
-    print(f"Starting Cloud Bridge Server on {host}:{port}")
-    print(f"Encryption: {'Available' if ENCRYPTION_AVAILABLE else 'Disabled'}")
+    print("=" * 60)
+    print("RAGGITY Cloud Bridge Server")
+    print("=" * 60)
+    print(f"Backup directory: {BACKUP_DIR}")
+    print(f"API key set: {bool(API_KEY)}")
+    print("")
+    print("Endpoints:")
+    print("  GET  /health - Health check")
+    print("  POST /events - Receive events")
+    print("  POST /backup/vector - Upload vector backup")
+    print("  GET  /backup/vector/{filename} - Download backup")
+    print("  GET  /backup/list - List all backups")
+    print("")
+    print("Starting server on 0.0.0.0:9000...")
+    print("=" * 60)
     
-    uvicorn.run(app, host=host, port=port)
-
-
-
-
+    uvicorn.run(app, host="0.0.0.0", port=9000)
