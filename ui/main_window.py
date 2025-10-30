@@ -1063,71 +1063,225 @@ class QueryTab(ctk.CTkFrame):
 
 
 class SystemTab(ctk.CTkFrame):
-    """System statistics tab"""
+    """System monitor with visual meters and snapshot"""
     
     def __init__(self, parent, app):
         super().__init__(parent, fg_color=DARK_BG)
         self.app = app
+        self.current_stats = {}
         
         # Title
         title = ctk.CTkLabel(self, text="System Monitor", font=heading())
         title.pack(pady=20)
         
-        # Stats card
-        stats_card = Card(self)
-        stats_card.pack(padx=20, pady=10, fill="both", expand=True)
+        # System card
+        system_card = Card(self)
+        system_card.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        # Header with snapshot button
+        header_frame = ctk.CTkFrame(system_card, fg_color="transparent")
+        header_frame.pack(fill="x", padx=20, pady=10)
+        
+        ctk.CTkLabel(header_frame, text="Resource Usage", font=subheading()).pack(side="left")
+        
+        self.snapshot_btn = ctk.CTkButton(
+            header_frame,
+            text="📸 Take Snapshot",
+            command=self.take_snapshot,
+            width=150,
+            height=30,
+            font=body()
+        )
+        self.snapshot_btn.pack(side="right", padx=5)
+        
+        # Metrics container
+        metrics_frame = ctk.CTkFrame(system_card, fg_color="transparent")
+        metrics_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # CPU Section
+        cpu_section = ctk.CTkFrame(metrics_frame, fg_color=CARD_BG, corner_radius=8)
+        cpu_section.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(cpu_section, text="🖥️ CPU", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        
+        self.cpu_label = ctk.CTkLabel(cpu_section, text="0.0%", font=body(), text_color=TEXT_SECONDARY)
+        self.cpu_label.pack(padx=20, anchor="w")
+        
+        self.cpu_bar = ctk.CTkProgressBar(cpu_section, width=400, height=20)
+        self.cpu_bar.pack(padx=20, pady=10, fill="x")
+        self.cpu_bar.set(0)
+        
+        # RAM Section
+        ram_section = ctk.CTkFrame(metrics_frame, fg_color=CARD_BG, corner_radius=8)
+        ram_section.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(ram_section, text="💾 Memory", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        
+        self.ram_label = ctk.CTkLabel(ram_section, text="0.0%", font=body(), text_color=TEXT_SECONDARY)
+        self.ram_label.pack(padx=20, anchor="w")
+        
+        self.ram_bar = ctk.CTkProgressBar(ram_section, width=400, height=20)
+        self.ram_bar.pack(padx=20, pady=10, fill="x")
+        self.ram_bar.set(0)
+        
+        # GPU Section
+        gpu_section = ctk.CTkFrame(metrics_frame, fg_color=CARD_BG, corner_radius=8)
+        gpu_section.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(gpu_section, text="🎮 GPU", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        
+        self.gpu_name_label = ctk.CTkLabel(gpu_section, text="No GPU detected", font=small(), text_color=TEXT_SECONDARY)
+        self.gpu_name_label.pack(padx=20, anchor="w")
+        
+        self.gpu_util_label = ctk.CTkLabel(gpu_section, text="Utilization: 0%", font=body(), text_color=TEXT_SECONDARY)
+        self.gpu_util_label.pack(padx=20, anchor="w")
+        
+        self.gpu_util_bar = ctk.CTkProgressBar(gpu_section, width=400, height=20)
+        self.gpu_util_bar.pack(padx=20, pady=5, fill="x")
+        self.gpu_util_bar.set(0)
+        
+        self.gpu_vram_label = ctk.CTkLabel(gpu_section, text="VRAM: 0 MB / 0 MB", font=body(), text_color=TEXT_SECONDARY)
+        self.gpu_vram_label.pack(padx=20, anchor="w")
+        
+        self.gpu_vram_bar = ctk.CTkProgressBar(gpu_section, width=400, height=20)
+        self.gpu_vram_bar.pack(padx=20, pady=10, fill="x")
+        self.gpu_vram_bar.set(0)
         
         # Status
-        self.status = StatusLabel(stats_card, status="info", text="⏳ Loading...")
+        self.status = StatusLabel(system_card, status="info", text="Connecting...")
         self.status.pack(pady=10)
         
-        # Stats display
-        self.stats_text = ctk.CTkTextbox(stats_card, font=mono())
-        self.stats_text.pack(fill="both", expand=True, padx=20, pady=10)
-        
-        self.after(500, self.update_stats)
+        # Update stats periodically
+        self.after(1000, self.update_stats)
 
     def update_stats(self):
-        """Update system statistics (non-blocking)"""
-        def fetch():
+        """Fetch and display system stats (non-blocking)"""
+        def run():
             try:
-                r = requests.get("http://localhost:8000/system-stats", timeout=3)
-                if r.ok:
-                    data = r.json()
-                    
-                    stats = "=== System Statistics ===\n\n"
-                    stats += f"CPU: {data.get('cpu_percent', 0):.1f}%\n"
-                    stats += f"Memory: {data.get('mem_percent', 0):.1f}% "
-                    stats += f"({data.get('mem_used_mb', 0)} / {data.get('mem_total_mb', 0)} MB)\n\n"
-                    
-                    gpu = data.get("gpu", {})
-                    if gpu.get("available"):
-                        stats += f"GPU: {gpu.get('name', 'Unknown')}\n"
-                        stats += f"GPU Utilization: {gpu.get('utilization', 0):.1f}%\n"
-                        stats += f"GPU Memory: {gpu.get('memory_percent', 0):.1f}%\n"
-                        if gpu.get('temperature'):
-                            stats += f"GPU Temp: {gpu.get('temperature')}°C\n"
+                r = requests.get("http://localhost:8000/system-stats", timeout=5)
+                
+                def update_ui():
+                    if r.ok:
+                        try:
+                            stats = r.json()
+                            self.current_stats = stats
+                            
+                            # Update CPU
+                            cpu_percent = stats.get("cpu_percent", 0)
+                            self.cpu_label.configure(text=f"{cpu_percent:.1f}%")
+                            self.cpu_bar.set(cpu_percent / 100.0)
+                            
+                            # Color code based on usage
+                            if cpu_percent > 80:
+                                self.cpu_bar.configure(progress_color=STATUS_ERROR)
+                            elif cpu_percent > 60:
+                                self.cpu_bar.configure(progress_color=STATUS_WARNING)
+                            else:
+                                self.cpu_bar.configure(progress_color=STATUS_OK)
+                            
+                            # Update RAM
+                            mem_percent = stats.get("mem_percent", 0)
+                            self.ram_label.configure(text=f"{mem_percent:.1f}%")
+                            self.ram_bar.set(mem_percent / 100.0)
+                            
+                            if mem_percent > 80:
+                                self.ram_bar.configure(progress_color=STATUS_ERROR)
+                            elif mem_percent > 60:
+                                self.ram_bar.configure(progress_color=STATUS_WARNING)
+                            else:
+                                self.ram_bar.configure(progress_color=STATUS_OK)
+                            
+                            # Update GPU
+                            gpu = stats.get("gpu", {})
+                            if gpu.get("available"):
+                                gpu_name = gpu.get("name", "Unknown GPU")
+                                self.gpu_name_label.configure(text=f"Device: {gpu_name}")
+                                
+                                # GPU Utilization
+                                gpu_util = gpu.get("utilization_percent", gpu.get("utilization", 0))
+                                self.gpu_util_label.configure(text=f"Utilization: {gpu_util:.1f}%")
+                                self.gpu_util_bar.set(gpu_util / 100.0)
+                                
+                                # VRAM
+                                vram_used = gpu.get("memory_used_mb", 0)
+                                vram_total = gpu.get("memory_total_mb", 1)
+                                vram_percent = (vram_used / vram_total * 100) if vram_total > 0 else 0
+                                
+                                self.gpu_vram_label.configure(text=f"VRAM: {vram_used:,} MB / {vram_total:,} MB")
+                                self.gpu_vram_bar.set(vram_percent / 100.0)
+                                
+                                if vram_percent > 80:
+                                    self.gpu_vram_bar.configure(progress_color=STATUS_ERROR)
+                                elif vram_percent > 60:
+                                    self.gpu_vram_bar.configure(progress_color=STATUS_WARNING)
+                                else:
+                                    self.gpu_vram_bar.configure(progress_color=STATUS_OK)
+                            else:
+                                self.gpu_name_label.configure(text="No GPU detected (CPU mode)")
+                                self.gpu_util_label.configure(text="Utilization: N/A")
+                                self.gpu_util_bar.set(0)
+                                self.gpu_vram_label.configure(text="VRAM: N/A")
+                                self.gpu_vram_bar.set(0)
+                            
+                            self.status.set_status("ok", "✓ Live")
+                            
+                        except Exception as e:
+                            log(f"UI: Failed to parse system stats: {e}", "UI")
+                            self.status.set_status("error", "✗ Parse Error")
                     else:
-                        stats += "GPU: Not Available\n"
-                    
-                    stats += f"\nOllama: {'✓ Running' if data.get('ollama_running') else '✗ Stopped'}\n"
-                    stats += f"\nVector Store: {CFG.vector_store.upper()}\n"
-                    stats += f"Provider: {CFG.provider.upper()}\n"
-                    stats += f"Model: {CFG.model_name}\n"
-                    
-                    def update_ui():
-                        self.stats_text.delete("1.0", "end")
-                        self.stats_text.insert("end", stats)
-                        self.status.set_status("ok", "✓ Updated")
-                    
-                    self.after(0, update_ui)
-                else:
-                    self.after(0, lambda: self.status.set_status("error", "✗ API Error"))
-            except Exception:
-                self.after(0, lambda: self.status.set_status("error", "✗ Connection Error"))
+                        self.status.set_status("error", f"✗ HTTP {r.status_code}")
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                log(f"UI: System stats fetch error: {e}", "UI")
+                
+                def update_ui():
+                    self.status.set_status("error", "✗ Connection Error")
+                
+                self.after(0, update_ui)
         
-        threading.Thread(target=fetch, daemon=True).start()
+        threading.Thread(target=run, daemon=True).start()
         self.after(4000, self.update_stats)
+
+    def take_snapshot(self):
+        """Save current system stats to JSON file"""
+        try:
+            if not self.current_stats:
+                self.status.set_status("error", "✗ No data to snapshot")
+                return
+            
+            # Create logs directory
+            logs_dir = os.path.join(BASE_DIR, "logs")
+            os.makedirs(logs_dir, exist_ok=True)
+            
+            # Generate filename
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            filename = f"system_snapshot-{timestamp}.json"
+            filepath = os.path.join(logs_dir, filename)
+            
+            # Add metadata
+            snapshot_data = {
+                "timestamp": timestamp,
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "stats": self.current_stats
+            }
+            
+            # Write to file
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(snapshot_data, f, indent=2)
+            
+            # Show feedback
+            original_text = self.snapshot_btn.cget("text")
+            self.snapshot_btn.configure(text="✓ Saved!")
+            self.after(2000, lambda: self.snapshot_btn.configure(text=original_text))
+            
+            self.status.set_status("ok", f"✓ Snapshot saved: {filename}")
+            log(f"UI: System snapshot saved to {filepath}", "UI")
+            
+        except Exception as e:
+            log(f"UI: Snapshot failed: {e}", "UI")
+            self.status.set_status("error", "✗ Snapshot Failed")
 
 
 class LogsTab(ctk.CTkFrame):
