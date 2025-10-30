@@ -1,6 +1,6 @@
 """
 RAGGITY ZYZTEM 2.0 - Main UI Window
-Modern dark UI with sidebar navigation and non-blocking async operations
+Premium dark UI with app bar, icon sidebar, and card-based layout
 """
 
 import customtkinter as ctk
@@ -15,7 +15,10 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from ui.theme import apply_theme
+from ui.theme import (
+    apply_theme, heading, subheading, body, mono, Card, StatusLabel,
+    ACCENT, TEXT, TEXT_SECONDARY, STATUS_OK, STATUS_WARN, STATUS_ERROR, DARK_BG
+)
 from core.gpu import get_gpu_status
 from core.config import CFG
 from logger import log
@@ -29,52 +32,119 @@ except ImportError:
 
 
 class RaggityUI(ctk.CTk):
-    """Main application window"""
+    """Main application window with app bar and icon sidebar"""
     
     def __init__(self):
         super().__init__()
         self.title("RAGGITY ZYZTEM 2.0")
-        self.geometry("1100x700")
+        self.geometry("1200x750")
         self.resizable(True, True)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         
+        # Network operation counter for spinner
+        self.active_operations = 0
+        
         # Create layout
-        self.sidebar = Sidebar(self)
+        self.create_app_bar()
+        
+        # Main container with sidebar + content
+        main_container = ctk.CTkFrame(self, fg_color=DARK_BG)
+        main_container.pack(fill="both", expand=True)
+        
+        self.sidebar = Sidebar(self, main_container)
         self.sidebar.pack(side="left", fill="y")
         
-        self.container = Container(self)
-        self.container.pack(side="right", fill="both", expand=True)
+        self.content = ContentArea(self, main_container)
+        self.content.pack(side="right", fill="both", expand=True)
         
-        # Start status updates (scheduled via after)
+        # Start status updates
         self.after(2000, self.update_status)
+        self.after(500, self.update_spinner)
+
+    def create_app_bar(self):
+        """Create top app bar with status indicators"""
+        self.app_bar = ctk.CTkFrame(self, height=50, fg_color="#0a0a0c")
+        self.app_bar.pack(fill="x", padx=0, pady=0)
+        self.app_bar.pack_propagate(False)
+        
+        # App title
+        title = ctk.CTkLabel(
+            self.app_bar,
+            text="⚙️ RAGGITY ZYZTEM 2.0",
+            font=heading(),
+            text_color=ACCENT
+        )
+        title.pack(side="left", padx=20)
+        
+        # Spinner (shown during network ops)
+        self.spinner_label = ctk.CTkLabel(
+            self.app_bar,
+            text="",
+            font=body(),
+            text_color=STATUS_INFO
+        )
+        self.spinner_label.pack(side="left", padx=10)
+        
+        # Status indicators on right
+        status_frame = ctk.CTkFrame(self.app_bar, fg_color="transparent")
+        status_frame.pack(side="right", padx=20)
+        
+        # API Status
+        self.api_status = StatusLabel(status_frame, status="info", text="API: Checking...")
+        self.api_status.pack(side="left", padx=10)
+        
+        # GPU Status
+        self.gpu_status = ctk.CTkLabel(
+            status_frame,
+            text="GPU: ...",
+            font=body(),
+            text_color=TEXT_SECONDARY
+        )
+        self.gpu_status.pack(side="left", padx=10)
 
     def update_status(self):
-        """Update API and GPU status in sidebar (non-blocking)"""
+        """Update API and GPU status (non-blocking)"""
         def check_status():
+            # Check API
             try:
                 r = requests.get("http://localhost:8000/health", timeout=1)
-                api_status = "🟢 API Online" if r.ok else "🔴 API Down"
-            except Exception as e:
-                api_status = "🔴 API Down"
-                log(f"UI: API health check failed: {e}", "UI")
+                if r.ok:
+                    self.after(0, lambda: self.api_status.set_status("ok", "API: ✓ Online"))
+                else:
+                    self.after(0, lambda: self.api_status.set_status("error", "API: ✗ Down"))
+            except Exception:
+                self.after(0, lambda: self.api_status.set_status("error", "API: ✗ Offline"))
             
+            # Check GPU
             try:
                 gpu = get_gpu_status()
-                gpu_line = f"GPU: {gpu.get('name','CPU Mode')}" if gpu["available"] else "GPU: CPU Only"
-            except Exception as e:
-                gpu_line = "GPU: Error"
-                log(f"UI: GPU status check failed: {e}", "UI")
-            
-            # Update UI on main thread
-            self.after(0, lambda: self.sidebar.status_label.configure(
-                text=f"{api_status}  |  {gpu_line}"
-            ))
+                if gpu["available"]:
+                    name = gpu.get("name", "Unknown")[:20]
+                    util = gpu.get("utilization", 0)
+                    text = f"GPU: {name} ({util:.0f}%)"
+                    color = STATUS_OK if util < 80 else STATUS_WARN
+                else:
+                    text = "GPU: CPU Only"
+                    color = TEXT_SECONDARY
+                
+                self.after(0, lambda: self.gpu_status.configure(text=text, text_color=color))
+            except Exception:
+                pass
         
-        # Run check in background thread
         threading.Thread(target=check_status, daemon=True).start()
-        
-        # Schedule next update
         self.after(5000, self.update_status)
+
+    def update_spinner(self):
+        """Update spinner animation"""
+        if self.active_operations > 0:
+            spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            current = getattr(self, '_spinner_idx', 0)
+            self.spinner_label.configure(text=spinner_chars[current % len(spinner_chars)])
+            self._spinner_idx = current + 1
+        else:
+            self.spinner_label.configure(text="")
+        
+        self.after(100, self.update_spinner)
 
     def on_close(self):
         """Handle window close"""
@@ -83,130 +153,240 @@ class RaggityUI(ctk.CTk):
 
 
 class Sidebar(ctk.CTkFrame):
-    """Left sidebar with navigation buttons"""
+    """Icon-based sidebar navigation"""
     
-    def __init__(self, master):
-        super().__init__(master, width=220, fg_color="#111")
+    def __init__(self, app, parent):
+        super().__init__(parent, width=180, fg_color="#0a0a0c")
         self.pack_propagate(False)
+        self.app = app
         
-        # Logo
-        self.logo = ctk.CTkLabel(self, text="⚙️ RAGGITY", font=("Segoe UI", 20, "bold"))
-        self.logo.pack(pady=25)
+        # Navigation items with icons
+        self.nav_items = [
+            ("📊", "Dashboard"),
+            ("📥", "Ingest"),
+            ("💬", "Query"),
+            ("🖥️", "System"),
+            ("📜", "Logs"),
+            ("☁️", "Bridge"),
+            ("👗", "CLO3D")
+        ]
         
-        # Navigation buttons
         self.buttons = []
-        for name in ["Ingest", "Query", "System", "Logs", "Bridge"]:
-            b = ctk.CTkButton(
-                self,
-                text=name,
-                command=lambda n=name: master.container.show_tab(n)
-            )
-            b.pack(pady=5, padx=15, fill="x")
-            self.buttons.append(b)
+        self.active_button = None
         
-        # Status at bottom
-        self.status_label = ctk.CTkLabel(self, text="Connecting...", text_color="#999")
-        self.status_label.pack(side="bottom", pady=15)
+        # Add spacing at top
+        ctk.CTkLabel(self, text="", height=20).pack()
+        
+        for icon, name in self.nav_items:
+            btn = ctk.CTkButton(
+                self,
+                text=f"{icon}  {name}",
+                command=lambda n=name: self.select_tab(n),
+                fg_color="transparent",
+                text_color=TEXT_SECONDARY,
+                hover_color="#1a1a1e",
+                anchor="w",
+                font=body(),
+                height=45
+            )
+            btn.pack(pady=3, padx=10, fill="x")
+            self.buttons.append((name, btn))
+        
+        # Select Dashboard by default
+        self.select_tab("Dashboard")
+
+    def select_tab(self, name):
+        """Select a tab and update button styling"""
+        # Reset all buttons
+        for tab_name, btn in self.buttons:
+            if tab_name == name:
+                btn.configure(fg_color=ACCENT, text_color="white")
+                self.active_button = btn
+            else:
+                btn.configure(fg_color="transparent", text_color=TEXT_SECONDARY)
+        
+        # Show tab in content area
+        self.app.content.show_tab(name)
 
 
-class Container(ctk.CTkFrame):
-    """Main content container with tabs"""
+class ContentArea(ctk.CTkFrame):
+    """Main content area with tabs"""
     
-    def __init__(self, master):
-        super().__init__(master)
+    def __init__(self, app, parent):
+        super().__init__(parent, fg_color=DARK_BG)
+        self.app = app
         
         # Create all tabs
         self.tabs = {
-            "Ingest": IngestTab(self),
-            "Query": QueryTab(self),
-            "System": SystemTab(self),
-            "Logs": LogsTab(self),
-            "Bridge": BridgeTab(self),
+            "Dashboard": DashboardTab(self, app),
+            "Ingest": IngestTab(self, app),
+            "Query": QueryTab(self, app),
+            "System": SystemTab(self, app),
+            "Logs": LogsTab(self, app),
+            "Bridge": BridgeTab(self, app),
+            "CLO3D": CLO3DTab(self, app)
         }
         
-        # Place all tabs in same location
-        for t in self.tabs.values():
-            t.place(relwidth=1, relheight=1)
+        # Place all tabs
+        for tab in self.tabs.values():
+            tab.place(relx=0, rely=0, relwidth=1, relheight=1)
         
-        # Show Query tab by default
-        self.show_tab("Query")
+        self.show_tab("Dashboard")
 
     def show_tab(self, name):
         """Show the specified tab"""
-        # Hide all tabs
-        for k, v in self.tabs.items():
-            v.lower()
-        for t in self.tabs.values():
-            t.place_forget()
+        for tab_name, tab in self.tabs.items():
+            if tab_name == name:
+                tab.lift()
+            else:
+                tab.lower()
         
-        # Show selected tab
-        self.tabs[name].place(relwidth=1, relheight=1)
         log(f"UI: Switched to {name} tab", "UI")
 
 
 # ========== Tab Implementations ==========
 
+class DashboardTab(ctk.CTkFrame):
+    """Dashboard overview tab"""
+    
+    def __init__(self, parent, app):
+        super().__init__(parent, fg_color=DARK_BG)
+        self.app = app
+        
+        # Title
+        title = ctk.CTkLabel(self, text="Dashboard", font=heading())
+        title.pack(pady=20)
+        
+        # Welcome card
+        welcome_card = Card(self)
+        welcome_card.pack(padx=20, pady=10, fill="x")
+        
+        ctk.CTkLabel(
+            welcome_card,
+            text="Welcome to RAGGITY ZYZTEM 2.0",
+            font=subheading()
+        ).pack(pady=15, padx=20)
+        
+        ctk.CTkLabel(
+            welcome_card,
+            text="Modern RAG system with cloud integration",
+            font=body(),
+            text_color=TEXT_SECONDARY
+        ).pack(padx=20, pady=5)
+        
+        # Quick stats card
+        stats_card = Card(self)
+        stats_card.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        ctk.CTkLabel(stats_card, text="Quick Stats", font=subheading()).pack(pady=10)
+        
+        self.stats_text = ctk.CTkLabel(
+            stats_card,
+            text="Loading...",
+            font=body(),
+            justify="left"
+        )
+        self.stats_text.pack(pady=10, padx=20)
+        
+        # Start stats update
+        self.after(1000, self.update_dashboard_stats)
+
+    def update_dashboard_stats(self):
+        """Update dashboard stats"""
+        def fetch():
+            try:
+                r = requests.get("http://localhost:8000/system-stats", timeout=2)
+                if r.ok:
+                    data = r.json()
+                    stats = f"CPU: {data.get('cpu_percent', 0):.1f}%  |  "
+                    stats += f"RAM: {data.get('mem_percent', 0):.1f}%  |  "
+                    stats += f"Ollama: {'Running' if data.get('ollama_running') else 'Stopped'}"
+                    
+                    self.after(0, lambda: self.stats_text.configure(text=stats))
+            except Exception:
+                pass
+        
+        threading.Thread(target=fetch, daemon=True).start()
+        self.after(5000, self.update_dashboard_stats)
+
+
 class IngestTab(ctk.CTkFrame):
     """File ingestion tab"""
     
-    def __init__(self, master):
-        super().__init__(master)
+    def __init__(self, parent, app):
+        super().__init__(parent, fg_color=DARK_BG)
+        self.app = app
         
         # Title
-        ctk.CTkLabel(self, text="Ingest Files", font=("Segoe UI", 18)).pack(pady=10)
+        title = ctk.CTkLabel(self, text="Ingest Documents", font=heading())
+        title.pack(pady=20)
+        
+        # Ingest card
+        ingest_card = Card(self)
+        ingest_card.pack(padx=20, pady=10, fill="both", expand=True)
         
         # Path entry
-        self.entry = ctk.CTkEntry(self, placeholder_text="Drag a file or enter path")
+        ctk.CTkLabel(ingest_card, text="File or Directory Path", font=subheading()).pack(pady=10, padx=20)
+        
+        self.entry = ctk.CTkEntry(
+            ingest_card,
+            placeholder_text="Enter path or drag file here...",
+            height=40,
+            font=body()
+        )
         self.entry.pack(padx=20, pady=10, fill="x")
         
         # Ingest button
-        self.ingest_btn = ctk.CTkButton(self, text="Ingest", command=self.do_ingest)
-        self.ingest_btn.pack(pady=5)
+        self.ingest_btn = ctk.CTkButton(
+            ingest_card,
+            text="Ingest",
+            command=self.do_ingest,
+            height=40,
+            font=subheading(),
+            fg_color=ACCENT
+        )
+        self.ingest_btn.pack(pady=10)
         
-        # Status label
-        self.status_label = ctk.CTkLabel(self, text="", text_color="#999")
-        self.status_label.pack(pady=5)
+        # Status
+        self.status = StatusLabel(ingest_card, status="info", text="")
+        self.status.pack(pady=5)
         
         # Output console
-        self.output = ctk.CTkTextbox(self, height=200)
-        self.output.pack(fill="both", padx=20, pady=10, expand=True)
+        self.output = ctk.CTkTextbox(ingest_card, font=mono(), wrap="word")
+        self.output.pack(fill="both", expand=True, padx=20, pady=10)
+        self.output.insert("1.0", "Ready to ingest documents.\n")
 
     def do_ingest(self):
         """Trigger file ingestion (non-blocking)"""
-        path = self.entry.get().strip('" ')
+        path = self.entry.get().strip('"')
         
-        if not os.path.exists(path):
-            self.output.insert("end", f"[!] Path not found: {path}\n")
-            log(f"UI: Ingest failed - path not found: {path}", "UI")
+        if not path or not os.path.exists(path):
+            self.output.insert("end", f"[!] Invalid path: {path}\n")
+            self.status.set_status("error", "✗ Invalid Path")
             return
         
-        # Show loading status
-        self.status_label.configure(text="⏳ Ingesting...")
         self.ingest_btn.configure(state="disabled")
+        self.status.set_status("info", "⏳ Ingesting...")
+        self.output.insert("end", f"\n[→] Starting ingestion: {path}\n")
+        self.app.active_operations += 1
         
         def run():
             try:
-                log(f"UI: Starting ingestion of {path}", "UI")
-                self.output.insert("end", f"[→] Ingesting: {path}\n")
-                
                 r = requests.post(
                     "http://localhost:8000/ingest-path",
                     json={"path": path},
                     timeout=60
                 )
                 
-                # Update UI on main thread
                 def update_ui():
+                    self.app.active_operations -= 1
                     if r.ok:
-                        self.output.insert("end", f"[+] Success! Ingested: {path}\n")
-                        self.status_label.configure(text="✓ Complete")
-                        log(f"UI: Ingestion successful: {path}", "UI")
+                        result = r.json()
+                        self.output.insert("end", f"[+] Success! {result.get('message', '')}\n")
+                        self.status.set_status("ok", "✓ Complete")
                     else:
-                        self.output.insert("end", f"[x] Error {r.status_code}: {r.text}\n")
-                        self.status_label.configure(text="✗ Failed")
-                        log(f"UI: Ingestion failed {r.status_code}: {path}", "UI")
-                    
-                    # Re-enable button
+                        self.output.insert("end", f"[x] Error {r.status_code}\n")
+                        self.status.set_status("error", "✗ Failed")
                     self.ingest_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
@@ -215,85 +395,103 @@ class IngestTab(ctk.CTkFrame):
                 log(f"UI: Ingestion exception: {e}", "UI")
                 
                 def update_ui():
+                    self.app.active_operations -= 1
                     self.output.insert("end", f"[x] Error: {e}\n")
-                    self.status_label.configure(text="✗ Error")
+                    self.status.set_status("error", "✗ Error")
                     self.ingest_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
         
-        # Run in background thread
         threading.Thread(target=run, daemon=True).start()
 
 
 class QueryTab(ctk.CTkFrame):
     """Query interface tab"""
     
-    def __init__(self, master):
-        super().__init__(master)
+    def __init__(self, parent, app):
+        super().__init__(parent, fg_color=DARK_BG)
+        self.app = app
         
         # Title
-        ctk.CTkLabel(self, text="Ask a Question", font=("Segoe UI", 18)).pack(pady=10)
+        title = ctk.CTkLabel(self, text="Query Knowledge Base", font=heading())
+        title.pack(pady=20)
+        
+        # Query card
+        query_card = Card(self)
+        query_card.pack(padx=20, pady=10, fill="both", expand=True)
         
         # Query input
-        self.q = ctk.CTkEntry(self, placeholder_text="Enter question...")
-        self.q.pack(padx=20, pady=10, fill="x")
-        self.q.bind("<Return>", lambda e: self.ask())
+        ctk.CTkLabel(query_card, text="Ask a Question", font=subheading()).pack(pady=10, padx=20)
+        
+        self.query_entry = ctk.CTkEntry(
+            query_card,
+            placeholder_text="Enter your question...",
+            height=40,
+            font=body()
+        )
+        self.query_entry.pack(padx=20, pady=10, fill="x")
+        self.query_entry.bind("<Return>", lambda e: self.submit_query())
         
         # Query button
-        self.query_btn = ctk.CTkButton(self, text="Query", command=self.ask)
-        self.query_btn.pack()
+        self.query_btn = ctk.CTkButton(
+            query_card,
+            text="Submit Query",
+            command=self.submit_query,
+            height=40,
+            font=subheading(),
+            fg_color=ACCENT
+        )
+        self.query_btn.pack(pady=10)
         
-        # Status label
-        self.status_label = ctk.CTkLabel(self, text="", text_color="#999")
-        self.status_label.pack(pady=5)
+        # Status
+        self.status = StatusLabel(query_card, status="info", text="")
+        self.status.pack(pady=5)
         
         # Answer display
-        self.a = ctk.CTkTextbox(self, wrap="word")
-        self.a.pack(fill="both", expand=True, padx=20, pady=10)
+        self.answer_box = ctk.CTkTextbox(query_card, font=body(), wrap="word")
+        self.answer_box.pack(fill="both", expand=True, padx=20, pady=10)
+        self.answer_box.insert("1.0", "Enter a question to get started.\n")
 
-    def ask(self):
-        """Submit query to API (non-blocking)"""
-        q = self.q.get().strip()
+    def submit_query(self):
+        """Submit query (non-blocking)"""
+        q = self.query_entry.get().strip()
         if not q:
             return
         
-        # Show loading status
-        self.a.delete("1.0", "end")
-        self.a.insert("end", "⏳ Fetching...\n")
-        self.status_label.configure(text="⏳ Querying...")
         self.query_btn.configure(state="disabled")
+        self.status.set_status("info", "⏳ Querying...")
+        self.answer_box.delete("1.0", "end")
+        self.answer_box.insert("1.0", "⏳ Fetching answer...\n")
+        self.app.active_operations += 1
         
         def run():
             try:
-                log(f"UI: Query submitted: {q[:100]}", "UI")
-                
                 r = requests.get(
                     "http://localhost:8000/query",
                     params={"q": q, "k": 5},
                     timeout=60
                 )
                 
-                # Update UI on main thread
                 def update_ui():
+                    self.app.active_operations -= 1
                     if r.ok:
                         ans = r.json()
-                        self.a.delete("1.0", "end")
-                        self.a.insert("end", f"Q: {q}\n\n")
-                        self.a.insert("end", f"A: {ans['answer']}\n\n---\n\n")
+                        self.answer_box.delete("1.0", "end")
+                        self.answer_box.insert("end", f"Q: {q}\n\n", "question")
+                        self.answer_box.insert("end", f"A: {ans['answer']}\n\n", "answer")
                         
                         contexts = ans.get("contexts", [])
-                        for i, c in enumerate(contexts[:3], 1):
-                            self.a.insert("end", f"[Context {i}]\n{c[:300]}...\n\n")
+                        if contexts:
+                            self.answer_box.insert("end", "─" * 50 + "\nContexts:\n\n")
+                            for i, ctx in enumerate(contexts[:3], 1):
+                                self.answer_box.insert("end", f"[{i}] {ctx[:250]}...\n\n")
                         
-                        self.status_label.configure(text=f"✓ {len(contexts)} contexts")
-                        log(f"UI: Query successful, {len(contexts)} contexts", "UI")
+                        self.status.set_status("ok", f"✓ Found {len(contexts)} contexts")
                     else:
-                        self.a.delete("1.0", "end")
-                        self.a.insert("end", f"Error {r.status_code}: {r.text}\n")
-                        self.status_label.configure(text="✗ Error")
-                        log(f"UI: Query failed {r.status_code}", "UI")
+                        self.answer_box.delete("1.0", "end")
+                        self.answer_box.insert("end", f"Error {r.status_code}: {r.text}\n")
+                        self.status.set_status("error", "✗ Error")
                     
-                    # Re-enable button
                     self.query_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
@@ -302,47 +500,50 @@ class QueryTab(ctk.CTkFrame):
                 log(f"UI: Query exception: {e}", "UI")
                 
                 def update_ui():
-                    self.a.delete("1.0", "end")
-                    self.a.insert("end", f"Error: {e}\n")
-                    self.status_label.configure(text="✗ Connection Error")
+                    self.app.active_operations -= 1
+                    self.answer_box.delete("1.0", "end")
+                    self.answer_box.insert("end", f"Error: {e}\n")
+                    self.status.set_status("error", "✗ Connection Error")
                     self.query_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
         
-        # Run in background thread
         threading.Thread(target=run, daemon=True).start()
 
 
 class SystemTab(ctk.CTkFrame):
-    """System statistics tab with auto-refresh"""
+    """System statistics tab"""
     
-    def __init__(self, master):
-        super().__init__(master)
+    def __init__(self, parent, app):
+        super().__init__(parent, fg_color=DARK_BG)
+        self.app = app
         
         # Title
-        ctk.CTkLabel(self, text="System Monitor", font=("Segoe UI", 18)).pack(pady=10)
+        title = ctk.CTkLabel(self, text="System Monitor", font=heading())
+        title.pack(pady=20)
         
-        # Status label
-        self.status_label = ctk.CTkLabel(self, text="⏳ Loading...", text_color="#999")
-        self.status_label.pack(pady=5)
+        # Stats card
+        stats_card = Card(self)
+        stats_card.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        # Status
+        self.status = StatusLabel(stats_card, status="info", text="⏳ Loading...")
+        self.status.pack(pady=10)
         
         # Stats display
-        self.text = ctk.CTkTextbox(self)
-        self.text.pack(fill="both", expand=True, padx=20, pady=10)
+        self.stats_text = ctk.CTkTextbox(stats_card, font=mono())
+        self.stats_text.pack(fill="both", expand=True, padx=20, pady=10)
         
-        # Start auto-refresh (scheduled via after)
         self.after(500, self.update_stats)
 
     def update_stats(self):
         """Update system statistics (non-blocking)"""
-        def fetch_stats():
+        def fetch():
             try:
                 r = requests.get("http://localhost:8000/system-stats", timeout=3)
-                
                 if r.ok:
                     data = r.json()
                     
-                    # Format stats
                     stats = "=== System Statistics ===\n\n"
                     stats += f"CPU: {data.get('cpu_percent', 0):.1f}%\n"
                     stats += f"Memory: {data.get('mem_percent', 0):.1f}% "
@@ -352,8 +553,7 @@ class SystemTab(ctk.CTkFrame):
                     if gpu.get("available"):
                         stats += f"GPU: {gpu.get('name', 'Unknown')}\n"
                         stats += f"GPU Utilization: {gpu.get('utilization', 0):.1f}%\n"
-                        stats += f"GPU Memory: {gpu.get('memory_used', 0):.0f} / {gpu.get('memory_total', 0):.0f} MB "
-                        stats += f"({gpu.get('memory_percent', 0):.1f}%)\n"
+                        stats += f"GPU Memory: {gpu.get('memory_percent', 0):.1f}%\n"
                         if gpu.get('temperature'):
                             stats += f"GPU Temp: {gpu.get('temperature')}°C\n"
                     else:
@@ -364,330 +564,209 @@ class SystemTab(ctk.CTkFrame):
                     stats += f"Provider: {CFG.provider.upper()}\n"
                     stats += f"Model: {CFG.model_name}\n"
                     
-                    # Update UI on main thread
                     def update_ui():
-                        self.text.delete("1.0", "end")
-                        self.text.insert("end", stats)
-                        self.status_label.configure(text="✓ Updated")
+                        self.stats_text.delete("1.0", "end")
+                        self.stats_text.insert("end", stats)
+                        self.status.set_status("ok", "✓ Updated")
                     
                     self.after(0, update_ui)
                 else:
-                    log(f"UI: System stats API error {r.status_code}", "UI")
-                    
-                    def update_ui():
-                        self.text.delete("1.0", "end")
-                        self.text.insert("end", f"API Error: {r.status_code}\n{r.text}\n")
-                        self.status_label.configure(text="✗ API Error")
-                    
-                    self.after(0, update_ui)
-                    
-            except Exception as e:
-                log(f"UI: System stats exception: {e}", "UI")
-                
-                def update_ui():
-                    self.text.delete("1.0", "end")
-                    self.text.insert("end", f"Connection Error: {e}\n")
-                    self.status_label.configure(text="✗ Connection Error")
-                
-                self.after(0, update_ui)
+                    self.after(0, lambda: self.status.set_status("error", "✗ API Error"))
+            except Exception:
+                self.after(0, lambda: self.status.set_status("error", "✗ Connection Error"))
         
-        # Run fetch in background thread
-        threading.Thread(target=fetch_stats, daemon=True).start()
-        
-        # Schedule next update (after callback)
+        threading.Thread(target=fetch, daemon=True).start()
         self.after(4000, self.update_stats)
 
 
 class LogsTab(ctk.CTkFrame):
-    """Live logs viewer tab with scheduled refresh"""
+    """Live logs viewer tab"""
     
-    def __init__(self, master):
-        super().__init__(master)
+    def __init__(self, parent, app):
+        super().__init__(parent, fg_color=DARK_BG)
+        self.app = app
         
         # Title
-        ctk.CTkLabel(self, text="Live Logs", font=("Segoe UI", 18)).pack(pady=10)
+        title = ctk.CTkLabel(self, text="Live Logs", font=heading())
+        title.pack(pady=20)
         
-        # Status label
-        self.status_label = ctk.CTkLabel(self, text="", text_color="#999")
-        self.status_label.pack(pady=5)
+        # Logs card
+        logs_card = Card(self)
+        logs_card.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        # Status
+        self.status = StatusLabel(logs_card, status="info", text="")
+        self.status.pack(pady=10)
         
         # Log viewer
-        self.box = ctk.CTkTextbox(self, wrap="word")
-        self.box.pack(fill="both", expand=True, padx=20, pady=10)
+        self.log_viewer = ctk.CTkTextbox(logs_card, font=mono(), wrap="word")
+        self.log_viewer.pack(fill="both", expand=True, padx=20, pady=10)
         
-        # Start auto-refresh (scheduled via after)
         self.after(1000, self.refresh)
 
     def refresh(self):
-        """Refresh log display (non-blocking)"""
+        """Refresh logs (non-blocking)"""
         log_file = os.path.join(BASE_DIR, "Logs", "app.log")
         
-        def read_logs():
+        def read():
             try:
                 if os.path.exists(log_file):
                     with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-                        lines = f.readlines()[-40:]
+                        lines = f.readlines()[-50:]
                     
-                    content = "".join(lines) if lines else "Log file is empty.\n"
+                    content = "".join(lines) if lines else "No logs yet.\n"
                     
-                    # Update UI on main thread
                     def update_ui():
-                        self.box.delete("1.0", "end")
-                        self.box.insert("end", content)
-                        self.status_label.configure(text=f"✓ {len(lines)} lines")
+                        self.log_viewer.delete("1.0", "end")
+                        self.log_viewer.insert("end", content)
+                        self.status.set_status("ok", f"✓ {len(lines)} lines")
                     
                     self.after(0, update_ui)
                 else:
-                    log(f"UI: Log file not found: {log_file}", "UI")
-                    
-                    def update_ui():
-                        self.box.delete("1.0", "end")
-                        self.box.insert("end", f"Log file not found: {log_file}\n")
-                        self.status_label.configure(text="✗ Not Found")
-                    
-                    self.after(0, update_ui)
-                    
-            except Exception as e:
-                log(f"UI: Error reading logs: {e}", "UI")
-                
-                def update_ui():
-                    self.status_label.configure(text="✗ Read Error")
-                
-                self.after(0, update_ui)
+                    self.after(0, lambda: self.status.set_status("warn", "⚠ Log file not found"))
+            except Exception:
+                pass
         
-        # Run read in background thread
-        threading.Thread(target=read_logs, daemon=True).start()
-        
-        # Schedule next refresh (after callback)
+        threading.Thread(target=read, daemon=True).start()
         self.after(4000, self.refresh)
 
 
 class BridgeTab(ctk.CTkFrame):
-    """Cloud Bridge tab for health monitoring and backup controls"""
+    """Cloud Bridge tab"""
     
-    def __init__(self, master):
-        super().__init__(master)
+    def __init__(self, parent, app):
+        super().__init__(parent, fg_color=DARK_BG)
+        self.app = app
         
         # Title
-        ctk.CTkLabel(self, text="Cloud Bridge", font=("Segoe UI", 18)).pack(pady=10)
+        title = ctk.CTkLabel(self, text="Cloud Bridge", font=heading())
+        title.pack(pady=20)
         
-        # Bridge availability
         if not BRIDGE_AVAILABLE:
+            Card(self).pack(padx=20, pady=20)
             ctk.CTkLabel(
                 self,
                 text="⚠️ Cloud Bridge not available",
-                text_color="#ff6b6b"
-            ).pack(pady=20)
+                font=subheading(),
+                text_color=STATUS_WARN
+            ).pack(pady=50)
             return
         
-        # Cloud URL display
+        # Bridge card
+        bridge_card = Card(self)
+        bridge_card.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        # Config display
         cloud_url = os.getenv("CLOUD_URL", "Not configured")
         ctk.CTkLabel(
-            self,
-            text=f"Cloud URL: {cloud_url}",
-            text_color="#999"
-        ).pack(pady=5)
+            bridge_card,
+            text=f"URL: {cloud_url}",
+            font=body(),
+            text_color=TEXT_SECONDARY
+        ).pack(pady=10)
         
-        # Status label
-        self.status_label = ctk.CTkLabel(self, text="⏳ Checking...", text_color="#999")
-        self.status_label.pack(pady=10)
+        # Status
+        self.status = StatusLabel(bridge_card, status="info", text="⏳ Checking...")
+        self.status.pack(pady=10)
         
-        # Control buttons frame
-        controls_frame = ctk.CTkFrame(self)
-        controls_frame.pack(pady=20)
+        # Buttons
+        btn_frame = ctk.CTkFrame(bridge_card, fg_color="transparent")
+        btn_frame.pack(pady=15)
         
-        # Test event button
         self.test_btn = ctk.CTkButton(
-            controls_frame,
+            btn_frame,
             text="Send Test Event",
-            command=self.send_test_event,
-            width=180
+            command=self.send_test,
+            width=150,
+            fg_color=ACCENT
         )
-        self.test_btn.grid(row=0, column=0, padx=10, pady=5)
+        self.test_btn.grid(row=0, column=0, padx=5)
         
-        # Push backup button
         self.backup_btn = ctk.CTkButton(
-            controls_frame,
-            text="Push Vector Backup",
+            btn_frame,
+            text="Push Backup",
             command=self.push_backup,
-            width=180
+            width=150,
+            fg_color=ACCENT
         )
-        self.backup_btn.grid(row=0, column=1, padx=10, pady=5)
+        self.backup_btn.grid(row=0, column=1, padx=5)
         
-        # Auto backup toggle
-        self.auto_backup_var = ctk.BooleanVar(value=self.load_auto_backup_setting())
-        self.auto_backup_toggle = ctk.CTkCheckBox(
-            controls_frame,
-            text="Auto Backup on Ingest",
-            variable=self.auto_backup_var,
-            command=self.toggle_auto_backup
-        )
-        self.auto_backup_toggle.grid(row=1, column=0, columnspan=2, pady=10)
-        
-        # Output console
-        self.output = ctk.CTkTextbox(self, wrap="word", height=400)
+        # Output
+        self.output = ctk.CTkTextbox(bridge_card, font=mono())
         self.output.pack(fill="both", expand=True, padx=20, pady=10)
+        self.output.insert("1.0", "Cloud Bridge Ready\n")
         
-        self.output.insert("end", "Cloud Bridge Status Monitor\n\n")
-        self.output.insert("end", f"URL: {cloud_url}\n")
-        self.output.insert("end", f"API Key: {'✓ Set' if os.getenv('CLOUD_KEY') else '✗ Not Set'}\n\n")
-        
-        # Start health checks
         self.after(1000, self.check_health)
-    
-    def load_auto_backup_setting(self) -> bool:
-        """Load auto backup setting from config file"""
-        config_file = os.path.join(BASE_DIR, "ui", "config.json")
-        try:
-            if os.path.exists(config_file):
-                import json
-                with open(config_file, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                return config.get("auto_backup", False)
-        except Exception as e:
-            log(f"UI: Error loading auto backup setting: {e}", "UI")
-        return False
-    
-    def save_auto_backup_setting(self, value: bool):
-        """Save auto backup setting to config file"""
-        config_file = os.path.join(BASE_DIR, "ui", "config.json")
-        try:
-            # Load existing config
-            config = {}
-            if os.path.exists(config_file):
-                import json
-                with open(config_file, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-            
-            # Update setting
-            config["auto_backup"] = value
-            
-            # Save
-            os.makedirs(os.path.dirname(config_file), exist_ok=True)
-            with open(config_file, 'w', encoding='utf-8') as f:
-                import json
-                json.dump(config, f, indent=2)
-            
-            # Set environment variable for current session
-            os.environ["AUTO_BACKUP"] = "true" if value else "false"
-            
-            log(f"UI: Auto backup set to {value}", "UI")
-        except Exception as e:
-            log(f"UI: Error saving auto backup setting: {e}", "UI")
-    
-    def toggle_auto_backup(self):
-        """Handle auto backup toggle"""
-        value = self.auto_backup_var.get()
-        self.save_auto_backup_setting(value)
-        status = "enabled" if value else "disabled"
-        self.output.insert("end", f"[•] Auto backup {status}\n")
-    
+
     def check_health(self):
-        """Check cloud bridge health (non-blocking)"""
+        """Check bridge health"""
         def check():
             try:
                 health = bridge.health()
-                
-                def update_ui():
-                    if health.get("status") == "ok":
-                        self.status_label.configure(text="🟢 Cloud Online", text_color="#4ade80")
-                    else:
-                        self.status_label.configure(text="🟡 Cloud Degraded", text_color="#fbbf24")
-                
-                self.after(0, update_ui)
-                
-            except Exception as e:
-                log(f"UI: Bridge health check failed: {e}", "UI")
-                
-                def update_ui():
-                    self.status_label.configure(text="🔴 Cloud Offline", text_color="#ef4444")
-                
-                self.after(0, update_ui)
+                if health.get("status") == "ok":
+                    self.after(0, lambda: self.status.set_status("ok", "🟢 Cloud Online"))
+                else:
+                    self.after(0, lambda: self.status.set_status("warn", "🟡 Degraded"))
+            except Exception:
+                self.after(0, lambda: self.status.set_status("error", "🔴 Offline"))
         
-        # Run in background
         threading.Thread(target=check, daemon=True).start()
-        
-        # Schedule next check
         self.after(5000, self.check_health)
-    
-    def send_test_event(self):
-        """Send test event to cloud bridge"""
+
+    def send_test(self):
+        """Send test event"""
         self.test_btn.configure(state="disabled")
-        self.output.insert("end", "[→] Sending test event...\n")
+        self.app.active_operations += 1
         
         def run():
             try:
-                result = bridge.send_event("ui_test", {
-                    "source": "ui",
-                    "timestamp": time.time(),
-                    "message": "Test event from RAGGITY UI"
-                })
+                result = bridge.send_event("ui_test", {"ts": time.time()})
                 
                 def update_ui():
-                    self.output.insert("end", f"[+] Test event sent! Response: {result.get('ack')}\n")
+                    self.app.active_operations -= 1
+                    self.output.insert("end", f"[+] Test event sent: {result.get('ack')}\n")
                     self.test_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
-                log("UI: Test event sent successfully", "UI")
-                
             except Exception as e:
-                log(f"UI: Test event failed: {e}", "UI")
-                
                 def update_ui():
-                    self.output.insert("end", f"[x] Test event failed: {e}\n")
+                    self.app.active_operations -= 1
+                    self.output.insert("end", f"[x] Failed: {e}\n")
                     self.test_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
         
         threading.Thread(target=run, daemon=True).start()
-    
+
     def push_backup(self):
-        """Push vector backup to cloud"""
+        """Push vector backup"""
         self.backup_btn.configure(state="disabled")
-        self.output.insert("end", "[→] Pushing vector backup...\n")
+        self.app.active_operations += 1
         
         def run():
             try:
-                # Find vector store path
                 vector_path = os.path.join(BASE_DIR, "vector_store", "faiss.index")
-                
                 if not os.path.exists(vector_path):
                     def update_ui():
-                        self.output.insert("end", "[!] Vector index not found. Ingest documents first.\n")
+                        self.app.active_operations -= 1
+                        self.output.insert("end", "[!] No index found\n")
                         self.backup_btn.configure(state="normal")
                     
                     self.after(0, update_ui)
                     return
                 
-                # Get file size
-                size_mb = os.path.getsize(vector_path) / (1024 * 1024)
-                
-                self.output.insert("end", f"[•] Uploading {size_mb:.2f} MB...\n")
-                
                 result = bridge.push_vector_backup(vector_path)
                 
                 def update_ui():
-                    self.output.insert("end", f"[+] Backup complete! Stored: {result.get('stored')}\n")
-                    self.output.insert("end", f"[•] Size: {result.get('size')} bytes\n")
+                    self.app.active_operations -= 1
+                    self.output.insert("end", f"[+] Backup complete: {result.get('size')} bytes\n")
                     self.backup_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
-                log(f"UI: Vector backup pushed ({size_mb:.2f} MB)", "UI")
-                
-            except FileNotFoundError as e:
-                log(f"UI: Backup file not found: {e}", "UI")
-                
-                def update_ui():
-                    self.output.insert("end", f"[x] File not found: {e}\n")
-                    self.backup_btn.configure(state="normal")
-                
-                self.after(0, update_ui)
-                
             except Exception as e:
-                log(f"UI: Backup failed: {e}", "UI")
-                
                 def update_ui():
-                    self.output.insert("end", f"[x] Backup failed: {e}\n")
+                    self.app.active_operations -= 1
+                    self.output.insert("end", f"[x] Failed: {e}\n")
                     self.backup_btn.configure(state="normal")
                 
                 self.after(0, update_ui)
@@ -695,19 +774,34 @@ class BridgeTab(ctk.CTkFrame):
         threading.Thread(target=run, daemon=True).start()
 
 
+class CLO3DTab(ctk.CTkFrame):
+    """CLO 3D module placeholder"""
+    
+    def __init__(self, parent, app):
+        super().__init__(parent, fg_color=DARK_BG)
+        
+        title = ctk.CTkLabel(self, text="CLO 3D Integration", font=heading())
+        title.pack(pady=20)
+        
+        card = Card(self)
+        card.pack(padx=20, pady=20)
+        
+        ctk.CTkLabel(
+            card,
+            text="CLO 3D module features coming soon",
+            font=subheading(),
+            text_color=TEXT_SECONDARY
+        ).pack(pady=50, padx=50)
+
+
 def exception_hook(exc_type, exc_value, exc_traceback):
-    """
-    Top-level exception hook to log uncaught errors
-    Catches all exceptions that would normally crash the application
-    """
+    """Top-level exception hook to log uncaught errors"""
     import traceback
     
-    # Don't catch KeyboardInterrupt
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
     
-    # Format full traceback
     tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
     tb_text = "".join(tb_lines)
     
@@ -722,12 +816,9 @@ def exception_hook(exc_type, exc_value, exc_traceback):
             f.write(tb_text)
             f.write(f"{'='*60}\n\n")
     except Exception:
-        pass  # Can't log, print to stderr
+        pass
     
-    # Also log via logger
     log(f"Uncaught exception: {exc_type.__name__}: {exc_value}", "UI")
-    
-    # Print to stderr
     print(f"\n{'='*60}", file=sys.stderr)
     print(f"UNCAUGHT EXCEPTION", file=sys.stderr)
     print(tb_text, file=sys.stderr)
@@ -735,9 +826,7 @@ def exception_hook(exc_type, exc_value, exc_traceback):
 
 
 if __name__ == "__main__":
-    # Install exception hook to catch all uncaught errors
     sys.excepthook = exception_hook
-    
     apply_theme()
     log("UI: Starting RAGGITY ZYZTEM 2.0", "UI")
     
