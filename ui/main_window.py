@@ -247,7 +247,7 @@ class ContentArea(ctk.CTkFrame):
 # ========== Tab Implementations ==========
 
 class DashboardTab(ctk.CTkFrame):
-    """Dashboard overview tab"""
+    """Dashboard with quick actions and live status"""
     
     def __init__(self, parent, app):
         super().__init__(parent, fg_color=DARK_BG)
@@ -257,57 +257,292 @@ class DashboardTab(ctk.CTkFrame):
         title = ctk.CTkLabel(self, text="Dashboard", font=heading())
         title.pack(pady=20)
         
-        # Welcome card
-        welcome_card = Card(self)
-        welcome_card.pack(padx=20, pady=10, fill="x")
+        # Two-column layout
+        columns_frame = ctk.CTkFrame(self, fg_color="transparent")
+        columns_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
-        ctk.CTkLabel(
-            welcome_card,
-            text="Welcome to RAGGITY ZYZTEM 2.0",
-            font=subheading()
-        ).pack(pady=15, padx=20)
+        # Left column: Quick Actions
+        left_col = ctk.CTkFrame(columns_frame, fg_color="transparent")
+        left_col.pack(side="left", fill="both", expand=True, padx=(0, 10))
         
-        ctk.CTkLabel(
-            welcome_card,
-            text="Modern RAG system with cloud integration",
-            font=body(),
-            text_color=TEXT_SECONDARY
-        ).pack(padx=20, pady=5)
+        # Right column: Status
+        right_col = ctk.CTkFrame(columns_frame, fg_color="transparent")
+        right_col.pack(side="right", fill="both", expand=True, padx=(10, 0))
         
-        # Quick stats card
-        stats_card = Card(self)
-        stats_card.pack(padx=20, pady=10, fill="both", expand=True)
-        
-        ctk.CTkLabel(stats_card, text="Quick Stats", font=subheading()).pack(pady=10)
-        
-        self.stats_text = ctk.CTkLabel(
-            stats_card,
-            text="Loading...",
-            font=body(),
-            justify="left"
-        )
-        self.stats_text.pack(pady=10, padx=20)
-        
-        # Start stats update
-        self.after(1000, self.update_dashboard_stats)
+        self.create_quick_actions(left_col)
+        self.create_status_panel(right_col)
 
-    def update_dashboard_stats(self):
-        """Update dashboard stats"""
+    def create_quick_actions(self, parent):
+        """Create quick actions card"""
+        actions_card = Card(parent)
+        actions_card.pack(fill="both", expand=True)
+        
+        ctk.CTkLabel(actions_card, text="Quick Actions", font=subheading()).pack(pady=15, padx=20)
+        
+        # Open Data Folder
+        open_data_btn = ctk.CTkButton(
+            actions_card,
+            text="📁 Open Data Folder",
+            command=self.open_data_folder,
+            height=45,
+            font=body(),
+            fg_color=ACCENT,
+            anchor="w"
+        )
+        open_data_btn.pack(pady=5, padx=20, fill="x")
+        
+        # Rebuild Index
+        self.rebuild_btn = ctk.CTkButton(
+            actions_card,
+            text="🔄 Rebuild Index",
+            command=self.rebuild_index,
+            height=45,
+            font=body(),
+            fg_color=ACCENT,
+            anchor="w"
+        )
+        self.rebuild_btn.pack(pady=5, padx=20, fill="x")
+        
+        # Troubleshoot
+        self.troubleshoot_btn = ctk.CTkButton(
+            actions_card,
+            text="🔧 Run Troubleshoot",
+            command=self.run_troubleshoot,
+            height=45,
+            font=body(),
+            fg_color=ACCENT,
+            anchor="w"
+        )
+        self.troubleshoot_btn.pack(pady=5, padx=20, fill="x")
+        
+        # Action output
+        ctk.CTkLabel(actions_card, text="Output", font=body(), text_color=TEXT_SECONDARY).pack(pady=5, padx=20)
+        
+        self.action_output = ctk.CTkTextbox(actions_card, font=mono(), height=200)
+        self.action_output.pack(fill="both", expand=True, padx=20, pady=10)
+        self.action_output.insert("1.0", "Ready for actions.\n")
+
+    def create_status_panel(self, parent):
+        """Create live status panel"""
+        status_card = Card(parent)
+        status_card.pack(fill="both", expand=True)
+        
+        ctk.CTkLabel(status_card, text="System Status", font=subheading()).pack(pady=15, padx=20)
+        
+        # Status display
+        self.status_text = ctk.CTkTextbox(status_card, font=mono())
+        self.status_text.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Start live updates
+        self.after(500, self.update_status_panel)
+
+    def open_data_folder(self):
+        """Open data directory in Explorer"""
+        try:
+            data_dir = CFG.data_dir
+            
+            if not os.path.exists(data_dir):
+                os.makedirs(data_dir, exist_ok=True)
+                self.action_output.insert("end", f"[+] Created: {data_dir}\n")
+            
+            # Open in Explorer (Windows)
+            if sys.platform == "win32":
+                os.startfile(data_dir)
+                self.action_output.insert("end", f"[→] Opened: {data_dir}\n")
+                log(f"UI: Opened data folder: {data_dir}", "UI")
+            else:
+                # macOS/Linux
+                import subprocess
+                subprocess.run(["xdg-open", data_dir])
+                self.action_output.insert("end", f"[→] Opened: {data_dir}\n")
+        except Exception as e:
+            self.action_output.insert("end", f"[x] Error: {e}\n")
+            log(f"UI: Failed to open data folder: {e}", "UI")
+
+    def rebuild_index(self):
+        """Rebuild vector index from data directory"""
+        self.rebuild_btn.configure(state="disabled")
+        self.action_output.insert("end", "\n[→] Starting index rebuild...\n")
+        self.app.active_operations += 1
+        
+        def run():
+            try:
+                data_dir = CFG.data_dir
+                
+                if not os.path.exists(data_dir):
+                    def update_ui():
+                        self.app.active_operations -= 1
+                        self.action_output.insert("end", f"[!] Data directory not found: {data_dir}\n")
+                        self.rebuild_btn.configure(state="normal")
+                    
+                    self.after(0, update_ui)
+                    return
+                
+                # Trigger ingestion
+                r = requests.post(
+                    "http://localhost:8000/ingest-path",
+                    json={"path": data_dir},
+                    timeout=120
+                )
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    if r.ok:
+                        result = r.json()
+                        self.action_output.insert("end", f"[+] Index rebuilt: {result.get('message', 'Success')}\n")
+                        log(f"UI: Index rebuilt from {data_dir}", "UI")
+                    else:
+                        self.action_output.insert("end", f"[x] Error {r.status_code}: {r.text}\n")
+                    
+                    self.rebuild_btn.configure(state="normal")
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                log(f"UI: Rebuild index exception: {e}", "UI")
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.action_output.insert("end", f"[x] Error: {e}\n")
+                    self.rebuild_btn.configure(state="normal")
+                
+                self.after(0, update_ui)
+        
+        threading.Thread(target=run, daemon=True).start()
+
+    def run_troubleshoot(self):
+        """Run system troubleshooter"""
+        self.troubleshoot_btn.configure(state="disabled")
+        self.action_output.insert("end", "\n[→] Running diagnostics...\n")
+        self.app.active_operations += 1
+        
+        def run():
+            try:
+                r = requests.get(
+                    "http://localhost:8000/troubleshoot",
+                    params={"hours": 24},
+                    timeout=30
+                )
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    if r.ok:
+                        result = r.json()
+                        summary = result.get("summary", {})
+                        
+                        self.action_output.insert("end", f"\n=== Diagnostic Results ===\n")
+                        self.action_output.insert("end", f"Total Issues: {summary.get('total_issues', 0)}\n")
+                        self.action_output.insert("end", f"  Errors: {summary.get('errors', 0)}\n")
+                        self.action_output.insert("end", f"  Warnings: {summary.get('warnings', 0)}\n")
+                        self.action_output.insert("end", f"  Missing Deps: {summary.get('missing_dependencies', 0)}\n")
+                        self.action_output.insert("end", f"Recommendations: {summary.get('recommendations', 0)}\n\n")
+                        
+                        # Show top 3 recommendations
+                        recommendations = result.get("recommendations", [])
+                        if recommendations:
+                            self.action_output.insert("end", "Top Recommendations:\n")
+                            for i, rec in enumerate(recommendations[:3], 1):
+                                self.action_output.insert("end", f"  {i}. {rec.get('description', 'N/A')}\n")
+                        
+                        self.action_output.insert("end", "\n[+] Diagnostics complete\n")
+                        log(f"UI: Troubleshoot complete: {summary.get('total_issues', 0)} issues", "UI")
+                    else:
+                        self.action_output.insert("end", f"[x] Error {r.status_code}\n")
+                    
+                    self.troubleshoot_btn.configure(state="normal")
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                log(f"UI: Troubleshoot exception: {e}", "UI")
+                
+                def update_ui():
+                    self.app.active_operations -= 1
+                    self.action_output.insert("end", f"[x] Error: {e}\n")
+                    self.troubleshoot_btn.configure(state="normal")
+                
+                self.after(0, update_ui)
+        
+        threading.Thread(target=run, daemon=True).start()
+
+    def update_status_panel(self):
+        """Update status panel with live data"""
         def fetch():
             try:
-                r = requests.get("http://localhost:8000/system-stats", timeout=2)
-                if r.ok:
-                    data = r.json()
-                    stats = f"CPU: {data.get('cpu_percent', 0):.1f}%  |  "
-                    stats += f"RAM: {data.get('mem_percent', 0):.1f}%  |  "
-                    stats += f"Ollama: {'Running' if data.get('ollama_running') else 'Stopped'}"
-                    
-                    self.after(0, lambda: self.stats_text.configure(text=stats))
-            except Exception:
-                pass
+                status_lines = []
+                
+                # API Health
+                try:
+                    r = requests.get("http://localhost:8000/health", timeout=1)
+                    if r.ok:
+                        status_lines.append("API: ✓ Online\n")
+                    else:
+                        status_lines.append("API: ✗ Down\n")
+                except Exception:
+                    status_lines.append("API: ✗ Offline\n")
+                
+                # GPU Status
+                try:
+                    gpu = get_gpu_status()
+                    if gpu["available"]:
+                        name = gpu.get("name", "Unknown")
+                        util = gpu.get("utilization", 0)
+                        status_lines.append(f"GPU: {name} ({util:.0f}%)\n")
+                    else:
+                        status_lines.append("GPU: CPU Only\n")
+                except Exception:
+                    status_lines.append("GPU: Error\n")
+                
+                status_lines.append("\n")
+                
+                # Vector Index Size
+                try:
+                    chunks_file = os.path.join(BASE_DIR, "vector_store", "chunks.json")
+                    if os.path.exists(chunks_file):
+                        import json
+                        with open(chunks_file, 'r', encoding='utf-8') as f:
+                            chunks = json.load(f)
+                        status_lines.append(f"Vector Index: {len(chunks)} chunks\n")
+                    else:
+                        status_lines.append("Vector Index: Not built\n")
+                except Exception:
+                    status_lines.append("Vector Index: Unknown\n")
+                
+                # Ollama Status
+                try:
+                    r = requests.get("http://localhost:8000/system-stats", timeout=1)
+                    if r.ok:
+                        data = r.json()
+                        ollama = "Running" if data.get('ollama_running') else "Stopped"
+                        status_lines.append(f"Ollama: {ollama}\n")
+                except Exception:
+                    status_lines.append("Ollama: Unknown\n")
+                
+                status_lines.append(f"\nVector Store: {CFG.vector_store.upper()}\n")
+                status_lines.append(f"Provider: {CFG.provider.upper()}\n")
+                status_lines.append(f"Model: {CFG.model_name}\n")
+                
+                # Latest log lines
+                status_lines.append("\n─" * 30 + "\nRecent Logs:\n\n")
+                try:
+                    log_file = os.path.join(BASE_DIR, "Logs", "app.log")
+                    if os.path.exists(log_file):
+                        with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                            lines = f.readlines()[-5:]
+                        status_lines.extend(lines)
+                except Exception:
+                    status_lines.append("No logs available\n")
+                
+                # Update UI
+                content = "".join(status_lines)
+                self.after(0, lambda: self.status_text.delete("1.0", "end"))
+                self.after(0, lambda: self.status_text.insert("1.0", content))
+                
+            except Exception as e:
+                log(f"UI: Dashboard status update failed: {e}", "UI")
         
         threading.Thread(target=fetch, daemon=True).start()
-        self.after(5000, self.update_dashboard_stats)
+        self.after(3000, self.update_status_panel)
 
 
 class IngestTab(ctk.CTkFrame):
