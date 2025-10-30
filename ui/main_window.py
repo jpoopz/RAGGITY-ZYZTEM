@@ -1,408 +1,317 @@
 """
-Main UI Window - CustomTkinter interface for RAG System
-Provides tabs for Ingest, Query, Logs, and System monitoring
+RAGGITY ZYZTEM 2.0 - Main UI Window
+Modern dark UI with sidebar navigation
 """
 
-import os
-import sys
+import customtkinter as ctk
 import threading
+import requests
 import time
-from pathlib import Path
-from tkinter import filedialog
+import os
+from ui.theme import apply_theme
+from core.gpu import get_gpu_status
+from core.config import CFG
 
-# Add parent to path
-BASE_DIR = Path(__file__).parent.parent
-sys.path.insert(0, str(BASE_DIR))
-
-try:
-    import customtkinter as ctk
-    import requests
-except ImportError as e:
-    print(f"Error: Missing dependencies - {e}")
-    print("Please run: pip install customtkinter requests")
-    sys.exit(1)
-
-# API Configuration
-API_BASE = "http://localhost:8000"
-API_TIMEOUT = 30
+apply_theme()
 
 
-class RAGSystemUI(ctk.CTk):
-    """Main UI window for RAG System"""
+class RaggityUI(ctk.CTk):
+    """Main application window"""
     
     def __init__(self):
         super().__init__()
+        self.title("RAGGITY ZYZTEM 2.0")
+        self.geometry("1100x700")
+        self.resizable(True, True)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
         
-        # Window setup
-        self.title("RAG System Control Panel")
-        self.geometry("1000x700")
+        # Create layout
+        self.sidebar = Sidebar(self)
+        self.sidebar.pack(side="left", fill="y")
         
-        # Set appearance
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("blue")
+        self.container = Container(self)
+        self.container.pack(side="right", fill="both", expand=True)
         
-        # Status variables
-        self.api_status = ctk.StringVar(value="Checking...")
-        self.gpu_status = ctk.StringVar(value="Unknown")
-        
-        # Build UI
-        self.create_status_bar()
-        self.create_tabs()
-        
-        # Start background updates
-        self.running = True
-        self.update_thread = threading.Thread(target=self.update_status_loop, daemon=True)
-        self.update_thread.start()
-    
-    def create_status_bar(self):
-        """Create top status bar"""
-        status_frame = ctk.CTkFrame(self, height=50)
-        status_frame.pack(fill="x", padx=10, pady=5)
-        
-        # API Status
-        api_label = ctk.CTkLabel(
-            status_frame,
-            text="API:",
-            font=("Arial", 12, "bold")
-        )
-        api_label.pack(side="left", padx=10)
-        
-        self.api_status_label = ctk.CTkLabel(
-            status_frame,
-            textvariable=self.api_status,
-            font=("Arial", 12)
-        )
-        self.api_status_label.pack(side="left", padx=5)
-        
-        # GPU Status
-        gpu_label = ctk.CTkLabel(
-            status_frame,
-            text="GPU:",
-            font=("Arial", 12, "bold")
-        )
-        gpu_label.pack(side="left", padx=20)
-        
-        self.gpu_status_label = ctk.CTkLabel(
-            status_frame,
-            textvariable=self.gpu_status,
-            font=("Arial", 12)
-        )
-        self.gpu_status_label.pack(side="left", padx=5)
-    
-    def create_tabs(self):
-        """Create main tab view"""
-        self.tabview = ctk.CTkTabview(self)
-        self.tabview.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Add tabs
-        self.tabview.add("Ingest")
-        self.tabview.add("Query")
-        self.tabview.add("Logs")
-        self.tabview.add("System")
-        
-        # Build each tab
-        self.build_ingest_tab()
-        self.build_query_tab()
-        self.build_logs_tab()
-        self.build_system_tab()
-    
-    def build_ingest_tab(self):
-        """Build the Ingest tab"""
-        tab = self.tabview.tab("Ingest")
-        
-        # Instructions
-        instructions = ctk.CTkLabel(
-            tab,
-            text="Select a file to ingest into the RAG system",
-            font=("Arial", 14)
-        )
-        instructions.pack(pady=20)
-        
-        # File picker button
-        self.select_file_btn = ctk.CTkButton(
-            tab,
-            text="Select File",
-            command=self.select_and_ingest_file,
-            width=200,
-            height=40
-        )
-        self.select_file_btn.pack(pady=10)
-        
-        # Status text
-        self.ingest_status = ctk.CTkTextbox(tab, height=400)
-        self.ingest_status.pack(fill="both", expand=True, padx=20, pady=10)
-        self.ingest_status.insert("1.0", "No file ingested yet.\n")
-    
-    def build_query_tab(self):
-        """Build the Query tab"""
-        tab = self.tabview.tab("Query")
-        
-        # Query input
-        query_label = ctk.CTkLabel(
-            tab,
-            text="Enter your query:",
-            font=("Arial", 14)
-        )
-        query_label.pack(pady=10)
-        
-        self.query_input = ctk.CTkEntry(tab, width=600, height=40)
-        self.query_input.pack(pady=10)
-        
-        # Query button
-        query_btn = ctk.CTkButton(
-            tab,
-            text="Submit Query",
-            command=self.submit_query,
-            width=200,
-            height=40
-        )
-        query_btn.pack(pady=10)
-        
-        # Results
-        results_label = ctk.CTkLabel(
-            tab,
-            text="Results:",
-            font=("Arial", 12, "bold")
-        )
-        results_label.pack(pady=5)
-        
-        self.query_results = ctk.CTkTextbox(tab, height=400)
-        self.query_results.pack(fill="both", expand=True, padx=20, pady=10)
-        self.query_results.insert("1.0", "No queries yet.\n")
-    
-    def build_logs_tab(self):
-        """Build the Logs tab"""
-        tab = self.tabview.tab("Logs")
-        
-        # Refresh button
-        refresh_btn = ctk.CTkButton(
-            tab,
-            text="Refresh Logs",
-            command=self.refresh_logs,
-            width=150,
-            height=35
-        )
-        refresh_btn.pack(pady=10)
-        
-        # Log viewer
-        self.log_viewer = ctk.CTkTextbox(tab, height=550)
-        self.log_viewer.pack(fill="both", expand=True, padx=20, pady=10)
-        
-        # Load logs
-        self.refresh_logs()
-    
-    def build_system_tab(self):
-        """Build the System tab"""
-        tab = self.tabview.tab("System")
-        
-        # Stats display
-        stats_label = ctk.CTkLabel(
-            tab,
-            text="System Statistics",
-            font=("Arial", 16, "bold")
-        )
-        stats_label.pack(pady=20)
-        
-        self.stats_text = ctk.CTkTextbox(tab, height=500)
-        self.stats_text.pack(fill="both", expand=True, padx=20, pady=10)
-        self.stats_text.insert("1.0", "Loading system stats...\n")
-        
-        # Auto-refresh every 5 seconds
-        self.update_system_stats()
-    
-    # ========== API Methods ==========
-    
-    def check_api_status(self):
-        """Check if API is reachable"""
+        # Start status updates
+        self.after(2000, self.update_status)
+
+    def update_status(self):
+        """Update API and GPU status in sidebar"""
         try:
-            response = requests.get(f"{API_BASE}/health", timeout=2)
-            if response.status_code == 200:
-                self.api_status.set("✓ Connected")
-                return True
-            else:
-                self.api_status.set("✗ Error")
-                return False
-        except requests.exceptions.RequestException:
-            self.api_status.set("✗ Offline")
-            return False
-    
-    def check_gpu_status(self):
-        """Check GPU status from API"""
-        try:
-            response = requests.get(f"{API_BASE}/system-stats", timeout=2)
-            if response.status_code == 200:
-                data = response.json()
-                gpu = data.get("gpu", {})
-                if gpu.get("available"):
-                    name = gpu.get("name", "Unknown")
-                    util = gpu.get("utilization", 0)
-                    self.gpu_status.set(f"{name} ({util:.0f}%)")
-                else:
-                    self.gpu_status.set("Not Available")
-            else:
-                self.gpu_status.set("Unknown")
-        except requests.exceptions.RequestException:
-            self.gpu_status.set("Unknown")
-    
-    def select_and_ingest_file(self):
-        """Select and ingest a file"""
-        filename = filedialog.askopenfilename(
-            title="Select file to ingest",
-            filetypes=[
-                ("Text files", "*.txt"),
-                ("PDF files", "*.pdf"),
-                ("All files", "*.*")
-            ]
-        )
+            r = requests.get("http://localhost:8000/health", timeout=1)
+            api = "🟢 API Online" if r.ok else "🔴 API Down"
+        except Exception:
+            api = "🔴 API Down"
         
-        if not filename:
-            return
+        gpu = get_gpu_status()
+        gpu_line = f"GPU: {gpu.get('name','CPU Mode')}" if gpu["available"] else "GPU: CPU Only"
         
-        self.ingest_status.delete("1.0", "end")
-        self.ingest_status.insert("1.0", f"Ingesting: {filename}\n\n")
-        
-        # Ingest file in background
-        thread = threading.Thread(target=self._ingest_file_thread, args=(filename,))
-        thread.start()
-    
-    def _ingest_file_thread(self, filepath):
-        """Background thread for file ingestion"""
-        try:
-            with open(filepath, 'rb') as f:
-                files = {'f': (os.path.basename(filepath), f)}
-                response = requests.post(
-                    f"{API_BASE}/ingest-file",
-                    files=files,
-                    timeout=API_TIMEOUT
-                )
-            
-            if response.status_code == 200:
-                result = response.json()
-                self.ingest_status.insert("end", f"✓ Success!\n\n{result}\n")
-            else:
-                self.ingest_status.insert("end", f"✗ Error: {response.status_code}\n{response.text}\n")
-        except Exception as e:
-            self.ingest_status.insert("end", f"✗ Error: {e}\n")
-    
-    def submit_query(self):
-        """Submit a query to the API"""
-        query = self.query_input.get().strip()
-        
-        if not query:
-            return
-        
-        self.query_results.delete("1.0", "end")
-        self.query_results.insert("1.0", f"Query: {query}\n\nSearching...\n")
-        
-        # Query in background
-        thread = threading.Thread(target=self._query_thread, args=(query,))
-        thread.start()
-    
-    def _query_thread(self, query):
-        """Background thread for querying"""
-        try:
-            response = requests.get(
-                f"{API_BASE}/query",
-                params={"q": query, "k": 5},
-                timeout=API_TIMEOUT
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                answer = result.get("answer", "No answer")
-                contexts = result.get("contexts", [])
-                
-                self.query_results.delete("1.0", "end")
-                self.query_results.insert("1.0", f"Query: {query}\n\n")
-                self.query_results.insert("end", f"Answer:\n{answer}\n\n")
-                self.query_results.insert("end", f"Contexts ({len(contexts)}):\n")
-                for i, ctx in enumerate(contexts[:3], 1):
-                    self.query_results.insert("end", f"\n[{i}] {ctx[:200]}...\n")
-            else:
-                self.query_results.delete("1.0", "end")
-                self.query_results.insert("1.0", f"Error: {response.status_code}\n{response.text}\n")
-        except Exception as e:
-            self.query_results.delete("1.0", "end")
-            self.query_results.insert("1.0", f"Error: {e}\n")
-    
-    def refresh_logs(self):
-        """Refresh the logs display"""
-        log_file = BASE_DIR / "Logs" / "app.log"
-        
-        self.log_viewer.delete("1.0", "end")
-        
-        if log_file.exists():
-            try:
-                with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                    lines = f.readlines()
-                    # Show last 100 lines
-                    tail_lines = lines[-100:] if len(lines) > 100 else lines
-                    self.log_viewer.insert("1.0", "".join(tail_lines))
-            except Exception as e:
-                self.log_viewer.insert("1.0", f"Error reading logs: {e}\n")
-        else:
-            self.log_viewer.insert("1.0", "Log file not found.\n")
-    
-    def update_system_stats(self):
-        """Update system statistics"""
-        if not self.running:
-            return
-        
-        try:
-            response = requests.get(f"{API_BASE}/system-stats", timeout=2)
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Format stats
-                stats_text = "=== System Statistics ===\n\n"
-                stats_text += f"CPU Usage: {data.get('cpu_percent', 0):.1f}%\n"
-                stats_text += f"Memory Usage: {data.get('mem_percent', 0):.1f}%\n"
-                stats_text += f"Memory: {data.get('mem_used_mb', 0)} / {data.get('mem_total_mb', 0)} MB\n\n"
-                
-                gpu = data.get("gpu", {})
-                if gpu.get("available"):
-                    stats_text += f"GPU: {gpu.get('name', 'Unknown')}\n"
-                    stats_text += f"GPU Utilization: {gpu.get('utilization', 0):.1f}%\n"
-                    stats_text += f"GPU Memory: {gpu.get('memory_used', 0):.0f} / {gpu.get('memory_total', 0):.0f} MB\n"
-                    if gpu.get('temperature'):
-                        stats_text += f"GPU Temperature: {gpu.get('temperature')}°C\n"
-                else:
-                    stats_text += "GPU: Not Available\n"
-                
-                stats_text += f"\nOllama: {'✓ Running' if data.get('ollama_running') else '✗ Not Running'}\n"
-                
-                self.stats_text.delete("1.0", "end")
-                self.stats_text.insert("1.0", stats_text)
-            else:
-                self.stats_text.delete("1.0", "end")
-                self.stats_text.insert("1.0", f"Error: {response.status_code}\n")
-        except Exception as e:
-            self.stats_text.delete("1.0", "end")
-            self.stats_text.insert("1.0", f"Error: {e}\n")
-        
-        # Schedule next update
-        self.after(5000, self.update_system_stats)
-    
-    def update_status_loop(self):
-        """Background loop to update status bar"""
-        while self.running:
-            self.check_api_status()
-            self.check_gpu_status()
-            time.sleep(5)
-    
-    def on_closing(self):
-        """Handle window closing"""
-        self.running = False
+        self.sidebar.status_label.configure(text=f"{api}  |  {gpu_line}")
+        self.after(5000, self.update_status)
+
+    def on_close(self):
+        """Handle window close"""
         self.destroy()
 
 
-def main():
-    """Main entry point"""
-    app = RAGSystemUI()
-    app.protocol("WM_DELETE_WINDOW", app.on_closing)
-    app.mainloop()
+class Sidebar(ctk.CTkFrame):
+    """Left sidebar with navigation buttons"""
+    
+    def __init__(self, master):
+        super().__init__(master, width=220, fg_color="#111")
+        self.pack_propagate(False)
+        
+        # Logo
+        self.logo = ctk.CTkLabel(self, text="⚙️ RAGGITY", font=("Segoe UI", 20, "bold"))
+        self.logo.pack(pady=25)
+        
+        # Navigation buttons
+        self.buttons = []
+        for name in ["Ingest", "Query", "System", "Logs"]:
+            b = ctk.CTkButton(
+                self,
+                text=name,
+                command=lambda n=name: master.container.show_tab(n)
+            )
+            b.pack(pady=5, padx=15, fill="x")
+            self.buttons.append(b)
+        
+        # Status at bottom
+        self.status_label = ctk.CTkLabel(self, text="Connecting...", text_color="#999")
+        self.status_label.pack(side="bottom", pady=15)
+
+
+class Container(ctk.CTkFrame):
+    """Main content container with tabs"""
+    
+    def __init__(self, master):
+        super().__init__(master)
+        
+        # Create all tabs
+        self.tabs = {
+            "Ingest": IngestTab(self),
+            "Query": QueryTab(self),
+            "System": SystemTab(self),
+            "Logs": LogsTab(self),
+        }
+        
+        # Place all tabs in same location
+        for t in self.tabs.values():
+            t.place(relwidth=1, relheight=1)
+        
+        # Show Query tab by default
+        self.show_tab("Query")
+
+    def show_tab(self, name):
+        """Show the specified tab"""
+        # Hide all tabs
+        for k, v in self.tabs.items():
+            v.lower()
+        for t in self.tabs.values():
+            t.place_forget()
+        
+        # Show selected tab
+        self.tabs[name].place(relwidth=1, relheight=1)
+
+
+# ========== Tab Implementations ==========
+
+class IngestTab(ctk.CTkFrame):
+    """File ingestion tab"""
+    
+    def __init__(self, master):
+        super().__init__(master)
+        
+        # Title
+        ctk.CTkLabel(self, text="Ingest Files", font=("Segoe UI", 18)).pack(pady=10)
+        
+        # Path entry
+        self.entry = ctk.CTkEntry(self, placeholder_text="Drag a file or enter path")
+        self.entry.pack(padx=20, pady=10, fill="x")
+        
+        # Ingest button
+        ctk.CTkButton(self, text="Ingest", command=self.do_ingest).pack(pady=5)
+        
+        # Output console
+        self.output = ctk.CTkTextbox(self, height=200)
+        self.output.pack(fill="both", padx=20, pady=10, expand=True)
+
+    def do_ingest(self):
+        """Trigger file ingestion"""
+        path = self.entry.get().strip('" ')
+        
+        if not os.path.exists(path):
+            self.output.insert("end", f"[!] Path not found: {path}\n")
+            return
+        
+        def run():
+            try:
+                r = requests.post(
+                    "http://localhost:8000/ingest-path",
+                    json={"path": path},
+                    timeout=30
+                )
+                if r.ok:
+                    self.output.insert("end", f"[+] Ingested: {path}\n")
+                else:
+                    self.output.insert("end", f"[x] Error {r.status_code}: {r.text}\n")
+            except Exception as e:
+                self.output.insert("end", f"[x] Error: {e}\n")
+        
+        threading.Thread(target=run, daemon=True).start()
+
+
+class QueryTab(ctk.CTkFrame):
+    """Query interface tab"""
+    
+    def __init__(self, master):
+        super().__init__(master)
+        
+        # Title
+        ctk.CTkLabel(self, text="Ask a Question", font=("Segoe UI", 18)).pack(pady=10)
+        
+        # Query input
+        self.q = ctk.CTkEntry(self, placeholder_text="Enter question...")
+        self.q.pack(padx=20, pady=10, fill="x")
+        self.q.bind("<Return>", lambda e: self.ask())
+        
+        # Query button
+        ctk.CTkButton(self, text="Query", command=self.ask).pack()
+        
+        # Answer display
+        self.a = ctk.CTkTextbox(self, wrap="word")
+        self.a.pack(fill="both", expand=True, padx=20, pady=10)
+
+    def ask(self):
+        """Submit query to API"""
+        q = self.q.get()
+        if not q:
+            return
+        
+        self.a.delete("1.0", "end")
+        self.a.insert("end", "Querying...\n")
+        
+        def run():
+            try:
+                r = requests.get(
+                    "http://localhost:8000/query",
+                    params={"q": q, "k": 5},
+                    timeout=30
+                )
+                
+                if r.ok:
+                    ans = r.json()
+                    self.a.delete("1.0", "end")
+                    self.a.insert("end", f"Q: {q}\n\n")
+                    self.a.insert("end", f"A: {ans['answer']}\n\n---\n\n")
+                    
+                    for i, c in enumerate(ans["contexts"][:3], 1):
+                        self.a.insert("end", f"[Context {i}]\n{c[:300]}...\n\n")
+                else:
+                    self.a.delete("1.0", "end")
+                    self.a.insert("end", f"Error {r.status_code}: {r.text}\n")
+            except Exception as e:
+                self.a.delete("1.0", "end")
+                self.a.insert("end", f"Error: {e}\n")
+        
+        threading.Thread(target=run, daemon=True).start()
+
+
+class SystemTab(ctk.CTkFrame):
+    """System statistics tab"""
+    
+    def __init__(self, master):
+        super().__init__(master)
+        
+        # Title
+        ctk.CTkLabel(self, text="System Monitor", font=("Segoe UI", 18)).pack(pady=10)
+        
+        # Stats display
+        self.text = ctk.CTkTextbox(self)
+        self.text.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Start auto-refresh
+        self.update_stats()
+
+    def update_stats(self):
+        """Update system statistics"""
+        try:
+            r = requests.get("http://localhost:8000/system-stats", timeout=2)
+            if r.ok:
+                data = r.json()
+                
+                # Format stats
+                stats = "=== System Statistics ===\n\n"
+                stats += f"CPU: {data.get('cpu_percent', 0):.1f}%\n"
+                stats += f"Memory: {data.get('mem_percent', 0):.1f}% "
+                stats += f"({data.get('mem_used_mb', 0)} / {data.get('mem_total_mb', 0)} MB)\n\n"
+                
+                gpu = data.get("gpu", {})
+                if gpu.get("available"):
+                    stats += f"GPU: {gpu.get('name', 'Unknown')}\n"
+                    stats += f"GPU Utilization: {gpu.get('utilization', 0):.1f}%\n"
+                    stats += f"GPU Memory: {gpu.get('memory_used', 0):.0f} / {gpu.get('memory_total', 0):.0f} MB "
+                    stats += f"({gpu.get('memory_percent', 0):.1f}%)\n"
+                    if gpu.get('temperature'):
+                        stats += f"GPU Temp: {gpu.get('temperature')}°C\n"
+                else:
+                    stats += "GPU: Not Available\n"
+                
+                stats += f"\nOllama: {'✓ Running' if data.get('ollama_running') else '✗ Stopped'}\n"
+                stats += f"\nVector Store: {CFG.vector_store.upper()}\n"
+                stats += f"Provider: {CFG.provider.upper()}\n"
+                stats += f"Model: {CFG.model_name}\n"
+                
+                self.text.delete("1.0", "end")
+                self.text.insert("end", stats)
+            else:
+                self.text.delete("1.0", "end")
+                self.text.insert("end", f"API Error: {r.status_code}\n")
+        except Exception as e:
+            self.text.delete("1.0", "end")
+            self.text.insert("end", f"Connection Error: {e}\n")
+        
+        # Schedule next update
+        self.after(4000, self.update_stats)
+
+
+class LogsTab(ctk.CTkFrame):
+    """Live logs viewer tab"""
+    
+    def __init__(self, master):
+        super().__init__(master)
+        
+        # Title
+        ctk.CTkLabel(self, text="Live Logs", font=("Segoe UI", 18)).pack(pady=10)
+        
+        # Log viewer
+        self.box = ctk.CTkTextbox(self, wrap="word")
+        self.box.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        # Start auto-refresh
+        self.after(2000, self.refresh)
+
+    def refresh(self):
+        """Refresh log display"""
+        log_file = "Logs/app.log"
+        
+        try:
+            if os.path.exists(log_file):
+                with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = f.readlines()[-40:]
+                
+                self.box.delete("1.0", "end")
+                self.box.insert("end", "".join(lines))
+            else:
+                self.box.delete("1.0", "end")
+                self.box.insert("end", "Log file not found.\n")
+        except Exception as e:
+            pass
+        
+        # Schedule next refresh
+        self.after(4000, self.refresh)
 
 
 if __name__ == "__main__":
-    main()
-
+    app = RaggityUI()
+    app.mainloop()
