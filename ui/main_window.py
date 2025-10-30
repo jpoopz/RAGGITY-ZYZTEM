@@ -171,6 +171,7 @@ class Sidebar(ctk.CTkFrame):
             ("📥", "Ingest"),
             ("💬", "Query"),
             ("🖥️", "System"),
+            ("⚙️", "Settings"),
             ("📜", "Logs"),
             ("☁️", "Bridge"),
             ("👗", "CLO3D")
@@ -227,6 +228,7 @@ class ContentArea(ctk.CTkFrame):
             "Ingest": IngestTab(self, app),
             "Query": QueryTab(self, app),
             "System": SystemTab(self, app),
+            "Settings": SettingsTab(self, app),
             "Logs": LogsTab(self, app),
             "Bridge": BridgeTab(self, app),
             "CLO3D": CLO3DTab(self, app)
@@ -1291,6 +1293,167 @@ class SystemTab(ctk.CTkFrame):
         except Exception as e:
             log(f"UI: Snapshot failed: {e}", "UI")
             self.status.set_status("error", "✗ Snapshot Failed")
+
+
+class SettingsTab(ctk.CTkFrame):
+    """Settings tab with vector store selector and configuration"""
+    
+    def __init__(self, parent, app):
+        super().__init__(parent, fg_color=DARK_BG)
+        self.app = app
+        self.config_file = os.path.join(BASE_DIR, "ui", "config.json")
+        
+        # Load current settings
+        self.load_settings()
+        
+        # Title
+        title = ctk.CTkLabel(self, text="Settings", font=heading())
+        title.pack(pady=20)
+        
+        # Settings card
+        settings_card = Card(self)
+        settings_card.pack(padx=20, pady=10, fill="both", expand=True)
+        
+        # Vector Store section
+        ctk.CTkLabel(settings_card, text="Vector Store", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        
+        vector_frame = ctk.CTkFrame(settings_card, fg_color="transparent")
+        vector_frame.pack(pady=10, padx=20, fill="x")
+        
+        ctk.CTkLabel(
+            vector_frame,
+            text="Select vector database backend:",
+            font=body(),
+            text_color=TEXT_SECONDARY
+        ).pack(anchor="w", pady=5)
+        
+        # Vector store dropdown
+        self.vector_store_var = ctk.StringVariable(value=CFG.vector_store)
+        self.vector_store_dropdown = ctk.CTkOptionMenu(
+            vector_frame,
+            variable=self.vector_store_var,
+            values=["faiss", "chroma"],
+            width=200,
+            font=body()
+        )
+        self.vector_store_dropdown.pack(anchor="w", pady=5)
+        
+        # Info text
+        ctk.CTkLabel(
+            vector_frame,
+            text="FAISS: Fast, lightweight, in-memory (default)\nChroma: Persistent, feature-rich, requires chromadb package",
+            font=small(),
+            text_color=TEXT_SECONDARY,
+            justify="left"
+        ).pack(anchor="w", pady=5)
+        
+        # Save button
+        self.save_btn = ctk.CTkButton(
+            settings_card,
+            text="💾 Save Settings",
+            command=self.save_settings,
+            height=40,
+            font=subheading(),
+            fg_color=ACCENT
+        )
+        self.save_btn.pack(pady=20)
+        
+        # Status
+        self.status = StatusLabel(settings_card, status="info", text="")
+        self.status.pack(pady=10)
+        
+        # Info panel
+        info_card = Card(self)
+        info_card.pack(padx=20, pady=10, fill="x")
+        
+        ctk.CTkLabel(info_card, text="Configuration Info", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        
+        info_text = f"""Current Configuration:
+        
+Provider: {CFG.provider}
+Model: {CFG.model_name}
+Vector Store: {CFG.vector_store}
+Data Directory: {CFG.data_dir}
+Vector Directory: {CFG.vector_dir}
+
+Note: Some settings require API/UI restart to take effect.
+Edit config.yaml or set environment variables for more options.
+"""
+        
+        info_label = ctk.CTkLabel(
+            info_card,
+            text=info_text,
+            font=mono(),
+            text_color=TEXT_SECONDARY,
+            justify="left"
+        )
+        info_label.pack(padx=20, pady=10, anchor="w")
+    
+    def load_settings(self):
+        """Load settings from config file"""
+        try:
+            if os.path.exists(self.config_file):
+                import json
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+                    # Settings loaded successfully
+                    log(f"UI: Loaded settings from {self.config_file}", "UI")
+        except Exception as e:
+            log(f"UI: Failed to load settings: {e}", "UI")
+    
+    def save_settings(self):
+        """Save settings to config file and update config.yaml"""
+        try:
+            import json
+            
+            selected_vector_store = self.vector_store_var.get()
+            
+            # Save to ui/config.json
+            os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
+            
+            settings = {
+                "vector_store": selected_vector_store,
+                "last_updated": time.strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2)
+            
+            # Also update config.yaml if it exists
+            config_yaml_path = os.path.join(BASE_DIR, "config.yaml")
+            if os.path.exists(config_yaml_path):
+                try:
+                    import yaml
+                    
+                    with open(config_yaml_path, 'r', encoding='utf-8') as f:
+                        yaml_config = yaml.safe_load(f) or {}
+                    
+                    yaml_config['vector_store'] = selected_vector_store
+                    
+                    with open(config_yaml_path, 'w', encoding='utf-8') as f:
+                        yaml.dump(yaml_config, f, default_flow_style=False, sort_keys=False)
+                    
+                    log(f"UI: Updated config.yaml with vector_store={selected_vector_store}", "UI")
+                except ImportError:
+                    # PyYAML not installed
+                    pass
+                except Exception as e:
+                    log(f"UI: Failed to update config.yaml: {e}", "UI")
+            
+            self.status.set_status("ok", "✓ Settings saved")
+            self.app.toast.show("Settings saved successfully", "success")
+            
+            # Show warning if vector store changed
+            if selected_vector_store != CFG.vector_store:
+                self.app.toast.show("Restart API and UI for vector store change to take effect", "warn", ms=4000)
+                self.status.set_status("warn", "⚠ Restart required for vector store change")
+            
+            log(f"UI: Settings saved: vector_store={selected_vector_store}", "UI")
+            
+        except Exception as e:
+            log(f"UI: Failed to save settings: {e}", "UI")
+            self.status.set_status("error", "✗ Save failed")
+            self.app.toast.show(f"Save failed: {str(e)}", "error")
 
 
 class LogsTab(ctk.CTkFrame):
