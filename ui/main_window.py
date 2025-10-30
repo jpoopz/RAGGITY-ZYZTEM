@@ -21,6 +21,7 @@ from ui.theme import (
     STATUS_INFO, DARK_BG, CARD_BG
 )
 from ui.toast import ToastManager
+from ui.palette import CommandPalette
 from core.gpu import get_gpu_status
 from core.config import CFG
 from logger import log
@@ -68,6 +69,10 @@ class RaggityUI(ctk.CTk):
         
         self.content = ContentArea(self, main_container)
         self.content.pack(side="right", fill="both", expand=True)
+        
+        # Bind command palette
+        self.bind("<Control-k>", lambda e: self.open_command_palette())
+        self.bind("<Control-K>", lambda e: self.open_command_palette())
         
         # Start status updates
         self.after(2000, self.update_status)
@@ -167,6 +172,174 @@ class RaggityUI(ctk.CTk):
         
         self.after(100, self.update_spinner)
 
+    def open_command_palette(self):
+        """Open command palette with Ctrl+K"""
+        commands = [
+            {
+                "name": "Ingest Path",
+                "action": lambda: self.sidebar.select_tab("Ingest"),
+                "category": "Documents",
+                "description": "Open Ingest tab to add documents"
+            },
+            {
+                "name": "Query Knowledge Base",
+                "action": lambda: self.sidebar.select_tab("Query"),
+                "category": "Query",
+                "description": "Ask questions about your documents"
+            },
+            {
+                "name": "Open Data Folder",
+                "action": self.open_data_folder,
+                "category": "Files",
+                "description": "Open data directory in explorer"
+            },
+            {
+                "name": "Open Logs Folder",
+                "action": self.open_logs_folder,
+                "category": "Files",
+                "description": "Open logs directory in explorer"
+            },
+            {
+                "name": "Rebuild Index",
+                "action": self.rebuild_index,
+                "category": "Maintenance",
+                "description": "Reindex all documents"
+            },
+            {
+                "name": "Run Troubleshooter",
+                "action": self.run_troubleshooter,
+                "category": "Diagnostics",
+                "description": "Analyze logs for issues"
+            },
+            {
+                "name": "Take System Snapshot",
+                "action": lambda: self.sidebar.select_tab("System"),
+                "category": "Monitoring",
+                "description": "Go to System tab for snapshot"
+            },
+            {
+                "name": "Switch to Dashboard",
+                "action": lambda: self.sidebar.select_tab("Dashboard"),
+                "category": "Navigation"
+            },
+            {
+                "name": "Switch to Settings",
+                "action": lambda: self.sidebar.select_tab("Settings"),
+                "category": "Navigation"
+            },
+            {
+                "name": "Switch to Logs",
+                "action": lambda: self.sidebar.select_tab("Logs"),
+                "category": "Navigation"
+            },
+            {
+                "name": "Switch to Bridge",
+                "action": lambda: self.sidebar.select_tab("Bridge"),
+                "category": "Navigation"
+            },
+            {
+                "name": "Switch to CLO3D",
+                "action": lambda: self.sidebar.select_tab("CLO3D"),
+                "category": "Navigation"
+            },
+        ]
+        
+        CommandPalette(self, commands)
+    
+    def open_data_folder(self):
+        """Open data folder in file explorer"""
+        try:
+            data_dir = CFG.data_dir
+            os.makedirs(data_dir, exist_ok=True)
+            
+            if os.name == 'nt':
+                os.startfile(data_dir)
+            elif os.name == 'posix':
+                import subprocess
+                if sys.platform == 'darwin':
+                    subprocess.Popen(['open', data_dir])
+                else:
+                    subprocess.Popen(['xdg-open', data_dir])
+            
+            self.toast.show("Data folder opened", "success")
+        except Exception as e:
+            log(f"UI: Failed to open data folder: {e}", "UI")
+            self.toast.show("Failed to open data folder", "error")
+    
+    def open_logs_folder(self):
+        """Open logs folder in file explorer"""
+        try:
+            logs_dir = os.path.join(BASE_DIR, "logs")
+            os.makedirs(logs_dir, exist_ok=True)
+            
+            if os.name == 'nt':
+                os.startfile(logs_dir)
+            elif os.name == 'posix':
+                import subprocess
+                if sys.platform == 'darwin':
+                    subprocess.Popen(['open', logs_dir])
+                else:
+                    subprocess.Popen(['xdg-open', logs_dir])
+            
+            self.toast.show("Logs folder opened", "success")
+        except Exception as e:
+            log(f"UI: Failed to open logs folder: {e}", "UI")
+            self.toast.show("Failed to open logs folder", "error")
+    
+    def rebuild_index(self):
+        """Trigger index rebuild"""
+        try:
+            data_dir = CFG.data_dir
+            
+            def run():
+                try:
+                    r = requests.post(
+                        "http://localhost:8000/ingest-path",
+                        params={"path": data_dir},
+                        timeout=120
+                    )
+                    
+                    def update_ui():
+                        if r.ok:
+                            self.toast.show("Index rebuild started", "success")
+                        else:
+                            self.toast.show("Rebuild failed", "error")
+                    
+                    self.after(0, update_ui)
+                except Exception as e:
+                    log(f"UI: Rebuild error: {e}", "UI")
+                    self.after(0, lambda: self.toast.show("Rebuild error", "error"))
+            
+            threading.Thread(target=run, daemon=True).start()
+        except Exception as e:
+            log(f"UI: Failed to start rebuild: {e}", "UI")
+            self.toast.show("Failed to start rebuild", "error")
+    
+    def run_troubleshooter(self):
+        """Run troubleshooter"""
+        try:
+            def run():
+                try:
+                    r = requests.get("http://localhost:8000/troubleshoot", timeout=30)
+                    
+                    def update_ui():
+                        if r.ok:
+                            self.toast.show("Troubleshooter complete", "success")
+                            # Switch to logs to see results
+                            self.sidebar.select_tab("Logs")
+                        else:
+                            self.toast.show("Troubleshooter failed", "error")
+                    
+                    self.after(0, update_ui)
+                except Exception as e:
+                    log(f"UI: Troubleshooter error: {e}", "UI")
+                    self.after(0, lambda: self.toast.show("Troubleshooter error", "error"))
+            
+            threading.Thread(target=run, daemon=True).start()
+        except Exception as e:
+            log(f"UI: Failed to run troubleshooter: {e}", "UI")
+            self.toast.show("Failed to run troubleshooter", "error")
+    
     def on_close(self):
         """Handle window close"""
         log("UI: Window closing", "UI")
@@ -174,12 +347,15 @@ class RaggityUI(ctk.CTk):
 
 
 class Sidebar(ctk.CTkFrame):
-    """Icon-based sidebar navigation"""
+    """Icon-based sidebar navigation with collapse support"""
     
     def __init__(self, app, parent):
         super().__init__(parent, width=180, fg_color="#0a0a0c")
         self.pack_propagate(False)
         self.app = app
+        self.collapsed = False
+        self.expanded_width = 180
+        self.collapsed_width = 60
         
         # Navigation items with icons
         self.nav_items = [
@@ -196,9 +372,23 @@ class Sidebar(ctk.CTkFrame):
         self.buttons = []
         self.active_button = None
         
-        # Add spacing at top
-        ctk.CTkLabel(self, text="", height=20).pack()
+        # Collapse/expand toggle button at top
+        self.toggle_btn = ctk.CTkButton(
+            self,
+            text="◀",
+            command=self.toggle_collapse,
+            width=40,
+            height=30,
+            fg_color="transparent",
+            hover_color="#1a1a1e",
+            font=("Segoe UI", 16)
+        )
+        self.toggle_btn.pack(pady=10, padx=5, anchor="e")
         
+        # Add spacing
+        ctk.CTkLabel(self, text="", height=10).pack()
+        
+        # Create navigation buttons
         for icon, name in self.nav_items:
             btn = ctk.CTkButton(
                 self,
@@ -212,15 +402,36 @@ class Sidebar(ctk.CTkFrame):
                 height=45
             )
             btn.pack(pady=3, padx=10, fill="x")
-            self.buttons.append((name, btn))
+            self.buttons.append((name, btn, icon))
         
         # Select Dashboard by default
         self.select_tab("Dashboard")
-
+    
+    def toggle_collapse(self):
+        """Toggle sidebar between collapsed and expanded"""
+        self.collapsed = not self.collapsed
+        
+        if self.collapsed:
+            # Collapse to icon-only
+            self.configure(width=self.collapsed_width)
+            self.toggle_btn.configure(text="▶")
+            
+            # Update buttons to icon-only
+            for tab_name, btn, icon in self.buttons:
+                btn.configure(text=icon, width=40)
+        else:
+            # Expand to full width
+            self.configure(width=self.expanded_width)
+            self.toggle_btn.configure(text="◀")
+            
+            # Update buttons to icon + text
+            for tab_name, btn, icon in self.buttons:
+                btn.configure(text=f"{icon}  {tab_name}", width=None)
+    
     def select_tab(self, name):
         """Select a tab and update button styling"""
         # Reset all buttons
-        for tab_name, btn in self.buttons:
+        for tab_name, btn, icon in self.buttons:
             if tab_name == name:
                 btn.configure(fg_color=ACCENT, text_color="white")
                 self.active_button = btn
@@ -229,6 +440,8 @@ class Sidebar(ctk.CTkFrame):
         
         # Show tab in content area
         self.app.content.show_tab(name)
+
+
 
 
 class ContentArea(ctk.CTkFrame):
