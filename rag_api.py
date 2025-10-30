@@ -23,6 +23,14 @@ except ImportError as e:
     TROUBLESHOOTER_AVAILABLE = False
     print(f"Troubleshooter not available: {e}")
 
+# Import system monitor
+try:
+    from modules.system_monitor.monitor import get_system_monitor
+    SYSTEM_MONITOR_AVAILABLE = True
+except ImportError as e:
+    SYSTEM_MONITOR_AVAILABLE = False
+    print(f"System monitor not available: {e}")
+
 log = get_logger("rag_api")
 
 app = FastAPI(title="RAGGITY ZYZTEM API")
@@ -153,6 +161,49 @@ def troubleshoot_endpoint(hours: int = 24):
         )
 
 
+@app.get("/system-stats")
+def system_stats():
+    """
+    Get current system resource statistics
+    
+    Returns:
+        Dictionary with:
+            - cpu_percent: CPU usage percentage
+            - mem_percent: Memory usage percentage
+            - mem_used_mb: Memory used in MB
+            - mem_total_mb: Total memory in MB
+            - gpu: GPU status (utilization, memory, temperature, etc.)
+            - ollama_running: Boolean if Ollama is accessible
+            - timestamp: Unix timestamp
+    """
+    if not SYSTEM_MONITOR_AVAILABLE:
+        log.error("System monitor module not available")
+        raise HTTPException(
+            status_code=503,
+            detail="System monitor module not available"
+        )
+    
+    try:
+        log.info("System stats request received")
+        
+        # Get system monitor
+        monitor = get_system_monitor()
+        
+        # Get current snapshot
+        snapshot = monitor.get_snapshot()
+        
+        log.info(f"System stats: CPU {snapshot['cpu_percent']}%, RAM {snapshot['mem_percent']}%")
+        
+        return snapshot
+        
+    except Exception as e:
+        log.error(f"Error in system-stats endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"System stats failed: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting RAGGITY ZYZTEM API...")
@@ -163,7 +214,9 @@ if __name__ == "__main__":
     print("   POST /ingest-path - Ingest from filesystem path")
     print("   GET  /query?q=<question>&k=<num> - Query the RAG system")
     print("   GET  /troubleshoot?hours=<hours> - Diagnostic report with fix recommendations")
+    print("   GET  /system-stats - Real-time CPU/RAM/GPU metrics")
     print(f"\n🔧 Troubleshooter: {'Available' if TROUBLESHOOTER_AVAILABLE else 'Not Available'}")
+    print(f"📊 System Monitor: {'Available' if SYSTEM_MONITOR_AVAILABLE else 'Not Available'}")
     print("\nPress Ctrl+C to stop\n")
     
     uvicorn.run(app, host="0.0.0.0", port=8000)
