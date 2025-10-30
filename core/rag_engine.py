@@ -1,5 +1,5 @@
 """
-RAG Engine - FAISS-based document ingestion and query
+RAG Engine - Pluggable vector store (FAISS or Chroma) for document ingestion and query
 """
 
 from __future__ import annotations
@@ -17,15 +17,28 @@ log = get_logger("rag")
 
 
 class RAGEngine:
-    """FAISS-based RAG engine for document ingestion and querying"""
+    """RAG engine with pluggable vector store (FAISS or Chroma)"""
     
-    def __init__(self, store_dir: str | None = None):
+    def __init__(self, store_dir: str | None = None, vector_store: str | None = None):
         ensure_dirs()
         self.store_dir = store_dir or get_vector_dir()
+        self.vector_store = vector_store or CFG.vector_store
         os.makedirs(self.store_dir, exist_ok=True)
         self.llm = LLMConnector()
-        self.index = None
-        self.index_map = []
+        
+        # Vector store specific state
+        if self.vector_store == "faiss":
+            self.index = None
+            self.index_map = []
+        elif self.vector_store == "chroma":
+            self.collection = None
+        else:
+            log.warning(f"Unknown vector store: {self.vector_store}, defaulting to FAISS")
+            self.vector_store = "faiss"
+            self.index = None
+            self.index_map = []
+        
+        log.info(f"RAGEngine initialized with vector_store={self.vector_store}")
 
     def _load_texts(self, path: str) -> List[str]:
         """Load texts from file or directory"""
@@ -67,7 +80,16 @@ class RAGEngine:
             i += size - overlap
         return out
 
+    # ========== FAISS Implementation ==========
+    
     def build_or_load_index(self):
+        """Build or load index from disk (FAISS or Chroma)"""
+        if self.vector_store == "faiss":
+            self._build_or_load_faiss()
+        elif self.vector_store == "chroma":
+            self._build_or_load_chroma()
+
+    def _build_or_load_faiss(self):
         """Build or load FAISS index from disk"""
         import json
         
@@ -85,17 +107,44 @@ class RAGEngine:
                 self.index = faiss.read_index(idx_fp)
                 with open(map_fp, "r", encoding="utf-8") as f:
                     self.index_map = json.load(f)
-                log.info(f"Loaded index with {len(self.index_map)} chunks")
+                log.info(f"Loaded FAISS index with {len(self.index_map)} chunks")
                 return
             except Exception as e:
-                log.error(f"Error loading index: {e}")
+                log.error(f"Error loading FAISS index: {e}")
         
         # Index will be created on first ingest
         self.index = None
         self.index_map = []
 
+    def _build_or_load_chroma(self):
+        """Build or load ChromaDB collection"""
+        try:
+            import chromadb
+        except ImportError:
+            log.error("chromadb not installed. Run: pip install chromadb")
+            return
+        
+        try:
+            client = chromadb.PersistentClient(path=CFG.chroma_dir)
+            self.collection = client.get_or_create_collection(
+                name="rag_documents",
+                metadata={"description": "RAG system documents"}
+            )
+            count = self.collection.count()
+            log.info(f"Loaded ChromaDB collection with {count} documents")
+        except Exception as e:
+            log.error(f"Error loading ChromaDB: {e}")
+            self.collection = None
+
     def ingest_path(self, path: str):
-        """Ingest documents from path into FAISS index"""
+        """Ingest documents from path into vector store"""
+        if self.vector_store == "faiss":
+            self._ingest_faiss(path)
+        elif self.vector_store == "chroma":
+            self._ingest_chroma(path)
+
+    def _ingest_faiss(self, path: str):
+        """Ingest documents into FAISS index"""
         import numpy as np
         import json
         
@@ -142,10 +191,58 @@ class RAGEngine:
         with open(os.path.join(self.store_dir, "chunks.json"), "w", encoding="utf-8") as f:
             json.dump(self.index_map, f, ensure_ascii=False, indent=2)
         
-        log.info(f"Ingested {len(texts)} chunks. Total index size: {len(self.index_map)}")
+        log.info(f"Ingested {len(texts)} chunks into FAISS. Total: {len(self.index_map)}")
+
+    def _ingest_chroma(self, path: str):
+        """Ingest documents into ChromaDB"""
+        import hashlib
+        
+        if self.collection is None:
+            self._build_or_load_chroma()
+            if self.collection is None:
+                log.error("ChromaDB collection not available")
+                return
+        
+        # Load and chunk texts
+        texts = []
+        for t in self._load_texts(path):
+            if t.strip():
+                texts.extend(self._chunk(t))
+        
+        if not texts:
+            log.warning("No texts found to ingest.")
+            return
+        
+        log.info(f"Ingesting {len(texts)} chunks into ChromaDB...")
+        
+        # Generate IDs for chunks
+        ids = [hashlib.md5(f"{path}_{i}".encode()).hexdigest() for i in range(len(texts))]
+        
+        # ChromaDB will generate embeddings automatically if configured
+        # Or we can provide our own embeddings
+        try:
+            embs = self.llm.embed(texts)
+            
+            # Add to collection
+            self.collection.add(
+                ids=ids,
+                documents=texts,
+                embeddings=embs
+            )
+            
+            log.info(f"Ingested {len(texts)} chunks into ChromaDB. Total: {self.collection.count()}")
+        except Exception as e:
+            log.error(f"Error ingesting into ChromaDB: {e}")
 
     def query(self, question: str, k: int = 5) -> Dict[str, Any]:
         """Query the RAG system"""
+        if self.vector_store == "faiss":
+            return self._query_faiss(question, k)
+        elif self.vector_store == "chroma":
+            return self._query_chroma(question, k)
+
+    def _query_faiss(self, question: str, k: int) -> Dict[str, Any]:
+        """Query using FAISS index"""
         import numpy as np
         
         # Load index if not already loaded
@@ -183,6 +280,58 @@ class RAGEngine:
                 "contexts": []
             }
         
+        # Get answer from LLM
+        ans = self._generate_answer(question, ctx)
+        
+        return {
+            "answer": ans,
+            "contexts": ctx,
+            "vector_store": "faiss"
+        }
+
+    def _query_chroma(self, question: str, k: int) -> Dict[str, Any]:
+        """Query using ChromaDB"""
+        if self.collection is None:
+            self._build_or_load_chroma()
+            if self.collection is None:
+                return {
+                    "answer": "No ChromaDB collection available. Please ingest documents first.",
+                    "contexts": []
+                }
+        
+        try:
+            # Query collection
+            results = self.collection.query(
+                query_texts=[question],
+                n_results=k
+            )
+            
+            # Extract contexts
+            ctx = results.get("documents", [[]])[0] if results.get("documents") else []
+            
+            if not ctx:
+                return {
+                    "answer": "No relevant context found.",
+                    "contexts": []
+                }
+            
+            # Get answer from LLM
+            ans = self._generate_answer(question, ctx)
+            
+            return {
+                "answer": ans,
+                "contexts": ctx,
+                "vector_store": "chroma"
+            }
+        except Exception as e:
+            log.error(f"Error querying ChromaDB: {e}")
+            return {
+                "answer": f"Error querying ChromaDB: {e}",
+                "contexts": []
+            }
+
+    def _generate_answer(self, question: str, contexts: List[str]) -> str:
+        """Generate answer from contexts using LLM"""
         # Build prompt
         prompt = [
             {
@@ -191,7 +340,7 @@ class RAGEngine:
             },
             {
                 "role": "user",
-                "content": f"Context:\n{chr(10).join('---' + chr(10) + c for c in ctx)}\n\nQuestion: {question}\n\nAnswer concisely with citations to chunks if useful."
+                "content": f"Context:\n{chr(10).join('---' + chr(10) + c for c in contexts)}\n\nQuestion: {question}\n\nAnswer concisely with citations to chunks if useful."
             }
         ]
         
@@ -202,12 +351,8 @@ class RAGEngine:
             log.error(f"Error getting LLM response: {e}")
             ans = f"Error: {e}"
         
-        return {
-            "answer": ans,
-            "contexts": ctx
-        }
+        return ans
 
 
 # Global RAG engine instance
 rag = RAGEngine()
-
