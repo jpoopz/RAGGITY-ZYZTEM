@@ -9,7 +9,7 @@ import shutil
 import os
 import time
 import threading
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 
 from core.rag_engine import RAGEngine
@@ -17,13 +17,8 @@ from core.paths import ensure_dirs, get_data_dir
 from core.config import CFG
 from logger import get_logger
 
-# Import academic API routes
-try:
-    from modules.academic.api import router as academic_router
-    ACADEMIC_AVAILABLE = True
-except ImportError as e:
-    ACADEMIC_AVAILABLE = False
-    print(f"Academic module not available: {e}")
+# Academic API routes integrated directly below (simplified version)
+ACADEMIC_AVAILABLE = True
 
 # Import troubleshooter
 try:

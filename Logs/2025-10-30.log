@@ -21,3 +21,39 @@ ModuleNotFoundError: No module named 'chromadb'
 [2025-10-30 02:29:00] [MEMORY] Memory database initialized with WAL mode
 [2025-10-30 02:29:00] [MEMORY] Auto-summary thread started (6-hour interval)
 [2025-10-30 02:29:00] [MEMORY] Memory database closed
+[2025-10-30 06:33:09] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:33:09] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:33:09] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:33:09] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:33:09] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:33:09] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:33:18] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:33:18] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:33:18] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:33:31] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:33:31] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:33:31] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:33:31] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:33:31] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:33:31] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:31] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:35:31] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:35:31] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:31] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:31] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:31] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:38] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:35:38] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:38] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:59] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:35:59] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:59] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:35:59] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:59] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:59] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:35:59] [rag_api] Academic routes registered (simplified)
+[2025-10-30 06:35:59] [rag_api] Academic routes registered (simplified)
+[2025-10-30 06:36:05] [bridge] CloudBridge initialized: https://your-vps-domain/api
+[2025-10-30 06:36:05] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:36:05] [rag] RAGEngine initialized with vector_store=faiss
+[2025-10-30 06:36:05] [rag_api] Academic routes registered (simplified)
