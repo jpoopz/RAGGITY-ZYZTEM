@@ -55,9 +55,16 @@ class Work:
     source: str = "unknown"  # openalex, crossref, arxiv, s2, etc.
     venue: Optional[str] = None
     citation_count: Optional[int] = None
+    influential_citation_count: Optional[int] = None  # S2 metric
     openalex_id: Optional[str] = None
     arxiv_id: Optional[str] = None
     oa_status: Optional[str] = None  # gold, green, hybrid, bronze, closed
+    embedding: Optional[List[float]] = None  # SPECTER2 embedding from S2
+    
+    @property
+    def is_highly_cited(self) -> bool:
+        """Check if paper is highly cited (>= 100 citations)"""
+        return self.citation_count is not None and self.citation_count >= 100
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -74,7 +81,10 @@ class Work:
             "citation_count": self.citation_count,
             "openalex_id": self.openalex_id,
             "arxiv_id": self.arxiv_id,
-            "oa_status": self.oa_status
+            "oa_status": self.oa_status,
+            "influential_citation_count": self.influential_citation_count,
+            "is_highly_cited": self.is_highly_cited,
+            "has_embedding": self.embedding is not None
         }
 
 
@@ -248,26 +258,39 @@ def search_arxiv(query: str, max_results: int = 25) -> List[Work]:
         return []
 
 
-def search_semanticscholar(query: str, api_key: Optional[str] = None, limit: int = 25) -> List[Work]:
+def search_semanticscholar(query: str, api_key: Optional[str] = None, limit: int = 25, 
+                          include_embeddings: bool = False) -> List[Work]:
     """
-    Search Semantic Scholar for papers.
+    Search Semantic Scholar for papers with optional citation metrics and embeddings.
     
     Args:
         query: Search query
-        api_key: Optional S2 API key for higher rate limits
+        api_key: Optional S2 API key for higher rate limits and advanced features
         limit: Maximum results
+        include_embeddings: Include SPECTER2 embeddings (requires API key)
     
     Returns:
-        List of Work objects
+        List of Work objects with citation metrics
     """
     _rate_limit("semanticscholar")
     
     try:
         url = "https://api.semanticscholar.org/graph/v1/paper/search"
+        
+        # Base fields
+        fields = [
+            "title", "year", "authors", "doi", "url", "abstract", "venue",
+            "citationCount", "influentialCitationCount", "openAccessPdf"
+        ]
+        
+        # Add embeddings if requested and API key available
+        if include_embeddings and api_key:
+            fields.append("embedding")
+        
         params = {
             "query": query,
             "limit": min(limit, 100),
-            "fields": "title,year,authors,doi,url,abstract,venue,citationCount,openAccessPdf"
+            "fields": ",".join(fields)
         }
         
         headers = {}
@@ -289,6 +312,15 @@ def search_semanticscholar(query: str, api_key: Optional[str] = None, limit: int
             oa_pdf = paper.get("openAccessPdf") or {}
             pdf_url = oa_pdf.get("url")
             
+            # Get citation metrics
+            citation_count = paper.get("citationCount")
+            influential_count = paper.get("influentialCitationCount")
+            
+            # Get embedding if available
+            embedding = paper.get("embedding", {})
+            if isinstance(embedding, dict):
+                embedding = embedding.get("vector")
+            
             work = Work(
                 title=paper.get("title", "Untitled"),
                 year=paper.get("year"),
@@ -299,10 +331,15 @@ def search_semanticscholar(query: str, api_key: Optional[str] = None, limit: int
                 abstract=paper.get("abstract"),
                 source="semanticscholar",
                 venue=paper.get("venue"),
-                citation_count=paper.get("citationCount"),
-                oa_status="gold" if pdf_url else "closed"
+                citation_count=citation_count,
+                influential_citation_count=influential_count,
+                oa_status="gold" if pdf_url else "closed",
+                embedding=embedding
             )
             works.append(work)
+        
+        # Sort by citation count (descending) as secondary sort
+        works.sort(key=lambda w: (w.citation_count or 0), reverse=True)
         
         log.info(f"Semantic Scholar: found {len(works)} papers for '{query}'")
         return works
