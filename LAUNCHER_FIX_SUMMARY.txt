@@ -1,0 +1,22 @@
+﻿=== LAUNCHER DIAGNOSTICS ===
+
+ISSUE: GUI launches but is not visible
+
+FIXES APPLIED:
+1.  Fixed Tcl/Tk library paths (Python 3.12 instead of 3.14)
+2.  Updated RAG_Control_Panel.py to check Python 3.12 first
+3.  Added error logging to Logs\python_errors.log
+4.  Simplified launch command to use start /B
+
+NEXT STEPS:
+1. Try desktop shortcut again
+2. If still not visible:
+   - Run: test_gui.bat (shows errors in console)
+   - Check: Logs\python_errors.log
+   - Check: debug_launch.log
+
+POSSIBLE CAUSES:
+- Window opening off-screen (check taskbar for running process)
+- Import errors (captured in python_errors.log)
+- Tkinter initialization failure (test_gui.bat will show this)
+

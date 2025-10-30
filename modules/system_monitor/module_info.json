@@ -1,0 +1,47 @@
+{
+  "module_id": "system_monitor",
+  "name": "System Monitor",
+  "version": "1.0.0",
+  "description": "Lightweight watcher for Ollama, Flask servers, CPU/GPU usage",
+  "author": "Julian Poopat",
+  "status": "active",
+  
+  "ports": {
+    "api": null,
+    "websocket": null
+  },
+  
+  "dependencies": {
+    "python_packages": ["psutil"],
+    "external": ["ollama"],
+    "other_modules": []
+  },
+  
+  "entry_points": {
+    "api": null,
+    "cli": null
+  },
+  
+  "gui": {
+    "tab_name": "System",
+    "icon": "monitor",
+    "priority": 5,
+    "widget_class": null
+  },
+  
+  "permissions": {
+    "file_system_access": [],
+    "network_access": false,
+    "require_api_keys": []
+  },
+  
+  "features": [
+    "process_monitoring",
+    "resource_monitoring",
+    "health_tracking"
+  ]
+}
+
+
+
+

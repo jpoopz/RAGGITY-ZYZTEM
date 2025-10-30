@@ -1,0 +1,19 @@
+{
+  "module_id": "clo_companion",
+  "version": "1.0.0",
+  "enabled": false,
+  "clo3d": {
+    "connection_method": "file",
+    "command_dir": "data/commands",
+    "response_dir": "data/responses",
+    "poll_interval_seconds": 1.0
+  },
+  "api": {
+    "host": "127.0.0.1",
+    "port": 5001
+  }
+}
+
+
+
+

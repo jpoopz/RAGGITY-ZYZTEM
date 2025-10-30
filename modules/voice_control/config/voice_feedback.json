@@ -1,0 +1,12 @@
+{
+  "mode": "sound",
+  "sound_file": "assets/chime.wav",
+  "text_popup": true,
+  "verbosity": "concise",
+  "visual_indicator": true,
+  "feedback_duration_ms": 500
+}
+
+
+
+

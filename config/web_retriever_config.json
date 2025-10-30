@@ -1,0 +1,14 @@
+{
+  "module_id": "web_retriever",
+  "version": "1.0.0",
+  "enabled": false,
+  "writeback_folder": "Notes/Web_Insights",
+  "api": {
+    "host": "127.0.0.1",
+    "port": 5002
+  }
+}
+
+
+
+

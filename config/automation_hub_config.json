@@ -1,0 +1,26 @@
+{
+  "module_id": "automation_hub",
+  "version": "1.0.0",
+  "enabled": false,
+  "n8n": {
+    "webhook_url": "",
+    "token": ""
+  },
+  "supabase": {
+    "url": "",
+    "key": ""
+  },
+  "vps": {
+    "host": "",
+    "user": "",
+    "key_path": ""
+  },
+  "api": {
+    "host": "127.0.0.1",
+    "port": 5003
+  }
+}
+
+
+
+

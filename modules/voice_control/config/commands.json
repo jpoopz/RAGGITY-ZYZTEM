@@ -1,0 +1,69 @@
+{
+  "commands": {
+    "start rag api": {
+      "action": "system.start_rag_api",
+      "description": "Start the Academic RAG API server"
+    },
+    "stop rag api": {
+      "action": "system.stop_rag_api",
+      "description": "Stop the Academic RAG API server"
+    },
+    "start api": {
+      "action": "system.start_rag_api",
+      "description": "Start the Academic RAG API server"
+    },
+    "stop api": {
+      "action": "system.stop_rag_api",
+      "description": "Stop the Academic RAG API server"
+    },
+    "index documents": {
+      "action": "rag.index_documents",
+      "description": "Index documents in the vault"
+    },
+    "reindex": {
+      "action": "rag.index_documents",
+      "description": "Re-index documents in the vault"
+    },
+    "health check": {
+      "action": "system.health_check",
+      "description": "Run full system health check"
+    },
+    "open logs": {
+      "action": "system.open_logs",
+      "description": "Open logs folder"
+    },
+    "summarize notes": {
+      "action": "rag.summarize_recent",
+      "description": "Summarize recent notes"
+    },
+    "generate shirt": {
+      "action": "clo.generate_shirt",
+      "description": "Generate shirt garment in CLO Companion"
+    },
+    "generate garment": {
+      "action": "clo.generate_shirt",
+      "description": "Generate garment in CLO Companion"
+    },
+    "switch low power": {
+      "action": "engine.switch:llama.cpp",
+      "description": "Switch to low-power CPU-only mode"
+    },
+    "switch to ollama": {
+      "action": "engine.switch:ollama",
+      "description": "Switch to Ollama engine"
+    },
+    "start all": {
+      "action": "system.start_all_modules",
+      "description": "Start all enabled modules"
+    },
+    "stop all": {
+      "action": "system.stop_all_modules",
+      "description": "Stop all running modules"
+    }
+  },
+  "unknown_commands": []
+}
+
+
+
+

@@ -1,0 +1,28 @@
+{
+  "test_timestamp": "2025-01-XX",
+  "workflows": {
+    "discord_alert": {
+      "name": "Discord Alert on ERROR",
+      "triggered": false,
+      "event_count": 0,
+      "status": "not_verified"
+    },
+    "google_sheets_log": {
+      "name": "Google Sheets Entry on FIXED",
+      "triggered": false,
+      "event_count": 0,
+      "status": "not_verified"
+    },
+    "email_notification": {
+      "name": "Email Notification on RENDER_COMPLETE",
+      "triggered": false,
+      "event_count": 0,
+      "status": "not_verified"
+    }
+  },
+  "note": "This file will be updated by n8n workflows when they are triggered during tests"
+}
+
+
+
+

@@ -1,0 +1,49 @@
+{
+  "module_id": "academic_rag",
+  "name": "Academic RAG Assistant",
+  "version": "1.2.0",
+  "description": "Local NotebookLM for Obsidian academic notes with RAG, citations, and knowledge profiles",
+  "author": "Julian Poopat",
+  "status": "active",
+  
+  "ports": {
+    "api": 5000,
+    "websocket": null
+  },
+  
+  "dependencies": {
+    "python_packages": ["chromadb", "flask", "flask-cors", "ollama", "pypdf2", "python-docx"],
+    "external": ["ollama", "llama3.2"],
+    "other_modules": []
+  },
+  
+  "entry_points": {
+    "api": "modules/academic_rag/api.py",
+    "cli": null
+  },
+  
+  "gui": {
+    "tab_name": "Academic",
+    "icon": "book",
+    "priority": 1,
+    "widget_class": null
+  },
+  
+  "permissions": {
+    "file_system_access": ["obsidian_vault_path"],
+    "network_access": false,
+    "require_api_keys": []
+  },
+  
+  "features": [
+    "document_indexing",
+    "rag_queries",
+    "citation_generation",
+    "knowledge_profiles",
+    "multi_context_query"
+  ]
+}
+
+
+
+

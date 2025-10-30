@@ -1,0 +1,13 @@
+{
+  "url": "http://<VPS_IP>:5678",
+  "auth_token": "",
+  "enable_alerts": true,
+  "enable_logs": true,
+  "webhook_endpoint": "/webhook/julian-events",
+  "username": "admin",
+  "password": ""
+}
+
+
+
+

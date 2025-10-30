@@ -1,0 +1,40 @@
+{
+  "module_id": "academic_rag",
+  "version": "1.2.0",
+  
+  "vault_path": "C:\\Users\\Julian Poopat\\Documents\\Obsidian",
+  "notes_path": "Notes",
+  
+  "knowledge_profiles": [
+    {
+      "name": "Management Class",
+      "vault_path": "C:\\Users\\Julian Poopat\\Documents\\Obsidian",
+      "active": true,
+      "filter_paths": []
+    }
+  ],
+  
+  "indexing": {
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+    "auto_reindex_on_vault_change": false
+  },
+  
+  "api": {
+    "host": "127.0.0.1",
+    "port": 5000,
+    "cors_enabled": false
+  },
+  
+  "rag": {
+    "model": "llama3.2",
+    "reasoning_modes": ["Analytical", "Concise", "Creative Academic"],
+    "citation_format": "inline",
+    "similarity_threshold": 0.6,
+    "multi_context_query": false
+  }
+}
+
+
+
+

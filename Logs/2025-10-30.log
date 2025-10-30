@@ -1,0 +1,23 @@
+[2025-10-30 02:21:15] [GUI] GPU: Not detected (pynvml not installed)
+[2025-10-30 02:26:26] [GUI] GPU: Not detected (pynvml not installed)
+[2025-10-30 02:26:26] [GUI] Control Panel started
+[2025-10-30 02:26:32] [GUI] Starting API server...
+[2025-10-30 02:26:32] [GUI] API process started (PID: 2476)
+[2025-10-30 02:26:36] [GUI] API process started but not responding
+[2025-10-30 02:26:58] [GUI] Starting document indexing...
+[2025-10-30 02:26:58] [GUI] Indexing error: Traceback (most recent call last):
+  File "C:\Users\Julian Poopat\Documents\Management Class\RAG_System\modules\academic_rag\index_documents.py", line 10, in <module>
+    import chromadb
+ModuleNotFoundError: No module named 'chromadb'
+
+[2025-10-30 02:27:17] [GUI] Starting API server...
+[2025-10-30 02:27:17] [GUI] API process started (PID: 5496)
+[2025-10-30 02:27:21] [GUI] API process started but not responding
+[2025-10-30 02:28:08] [GUI] Control Panel restart requested by user
+[2025-10-30 02:28:14] [GUI] Stopping all modules...
+[2025-10-30 02:28:48] [GUI] Stopping API server...
+[2025-10-30 02:28:48] [GUI] API server stopped
+[2025-10-30 02:28:58] [GUI] Initiating graceful shutdown...
+[2025-10-30 02:29:00] [MEMORY] Memory database initialized with WAL mode
+[2025-10-30 02:29:00] [MEMORY] Auto-summary thread started (6-hour interval)
+[2025-10-30 02:29:00] [MEMORY] Memory database closed

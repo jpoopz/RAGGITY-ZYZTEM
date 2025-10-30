@@ -1,0 +1,19 @@
+{
+  "module_id": "voice_control",
+  "version": "1.0.0",
+  "enabled": false,
+  "hotkey": "f9",
+  "whisper_path": "whisper-cpp",
+  "model_path": "models/ggml-small.bin",
+  "mic_enabled": true,
+  "command_mappings": {
+    "start rag api": "start_academic_rag",
+    "stop rag api": "stop_academic_rag",
+    "index documents": "index_documents",
+    "health check": "health_check"
+  }
+}
+
+
+
+

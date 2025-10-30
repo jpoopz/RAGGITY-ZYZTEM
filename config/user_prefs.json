@@ -1,0 +1,17 @@
+{
+  "active_profile": "Academic",
+  "theme": "Dark",
+  "engine_mode": "Auto",
+  "voice_mode": "PushToTalk",
+  "low_power": false,
+  "window_width": 1400,
+  "window_height": 900,
+  "last_tab": "Dashboard",
+  "auto_start_modules": ["academic_rag", "system_monitor"],
+  "notifications_enabled": true,
+  "context_preview_enabled": true
+}
+
+
+
+

@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "C:\Users\Julian Poopat\Documents\Management Class\RAG_System\modules\academic_rag\api.py", line 14, in <module>
+    from flask import Flask, request, jsonify
+ModuleNotFoundError: No module named 'flask'

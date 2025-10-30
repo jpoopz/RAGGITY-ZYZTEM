@@ -1,0 +1,31 @@
+{
+  "available_engines": [
+    {
+      "id": "ollama",
+      "name": "Ollama",
+      "type": "service",
+      "status": "available",
+      "supports_gpu": true,
+      "cpu_fallback": true,
+      "recommended_for": "Full-featured, GPU-accelerated inference"
+    },
+    {
+      "id": "llama.cpp",
+      "name": "llama.cpp",
+      "type": "local",
+      "status": "optional",
+      "supports_gpu": false,
+      "cpu_fallback": true,
+      "recommended_for": "CPU-only, low-resource environments"
+    }
+  ],
+  "auto_selection": {
+    "prefer_gpu": true,
+    "low_power_threshold_ram_gb": 10,
+    "fallback_order": ["ollama", "llama.cpp"]
+  }
+}
+
+
+
+

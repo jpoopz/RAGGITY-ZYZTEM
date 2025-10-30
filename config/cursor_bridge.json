@@ -1,0 +1,14 @@
+{
+  "auto_mode": true,
+  "ask_before_fix": true,
+  "cursor_cli_path": "C:/Users/Julian Poopat/AppData/Local/Programs/Cursor/resources/app/bin/cursor.exe",
+  "retry_count": 3,
+  "retry_delay": 30,
+  "enabled": true,
+  "vps_remote_enabled": false,
+  "vps_token": ""
+}
+
+
+
+

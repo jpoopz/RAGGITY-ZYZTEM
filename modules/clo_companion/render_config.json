@@ -1,0 +1,26 @@
+{
+  "default_mode": "fast_preview",
+  "gpu_limits": {
+    "max_utilization": 85,
+    "max_temperature": 80,
+    "auto_fallback": true
+  },
+  "avatar": {
+    "type": "unisex",
+    "scale": 1.0
+  },
+  "preview": {
+    "resolution": 512,
+    "quality": "medium"
+  },
+  "realistic": {
+    "resolution": 2048,
+    "quality": "high",
+    "enable_shadows": true,
+    "enable_lighting": true
+  }
+}
+
+
+
+

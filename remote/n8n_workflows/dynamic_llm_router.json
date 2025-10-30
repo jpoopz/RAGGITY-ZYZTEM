@@ -1,0 +1,269 @@
+{
+  "name": "Dynamic LLM Router",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "llm-route",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "llm-route"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://127.0.0.1:11434/api/health",
+        "authentication": "none",
+        "options": {}
+      },
+      "id": "check-local-health",
+      "name": "Check Local Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.statusCode }}",
+              "operation": "equal",
+              "value2": 200
+            }
+          ]
+        }
+      },
+      "id": "if-local-available",
+      "name": "If Local Available",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:11434/api/chat",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "llama3.2"
+            },
+            {
+              "name": "messages",
+              "value": "={{ $json.body.messages }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "local-llm-call",
+      "name": "Local LLM Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const services = [\n  { name: \"mistral\", cost: 0.0008, key: $env.MISTRAL_API_KEY, url: \"https://api.mistral.ai/v1/chat/completions\", model: \"mistral-small\" },\n  { name: \"openai\", cost: 0.0015, key: $env.OPENAI_API_KEY, url: \"https://api.openai.com/v1/chat/completions\", model: \"gpt-3.5-turbo\" },\n  { name: \"anthropic\", cost: 0.0020, key: $env.CLAUDE_API_KEY, url: \"https://api.anthropic.com/v1/messages\", model: \"claude-3-haiku-20240307\" }\n];\n\nconst active = services.filter(s => s.key);\nif (active.length === 0) {\n  return { error: \"No cloud LLM services available\" };\n}\n\nactive.sort((a, b) => a.cost - b.cost);\nconst selected = active[0];\n\n// Prepare payload based on provider\nlet payload = {};\nif (selected.name === \"anthropic\") {\n  payload = {\n    model: selected.model,\n    max_tokens: 1024,\n    messages: $json.body.messages\n  };\n} else {\n  payload = {\n    model: selected.model,\n    messages: $json.body.messages,\n    max_tokens: 1024\n  };\n}\n\nreturn {\n  provider: selected.name,\n  url: selected.url,\n  key: selected.key,\n  cost: selected.cost,\n  payload: payload,\n  headers: selected.name === \"anthropic\" ? {\n    \"x-api-key\": selected.key,\n    \"anthropic-version\": \"2023-06-01\",\n    \"content-type\": \"application/json\"\n  } : {\n    \"Authorization\": `Bearer ${selected.key}`,\n    \"content-type\": \"application/json\"\n  }\n};"
+      },
+      "id": "cloud-selector",
+      "name": "Cloud Selector",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.headers.Authorization || '' }}"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $json.headers['x-api-key'] || '' }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "={{ $json.headers['anthropic-version'] || '' }}"
+            },
+            {
+              "name": "content-type",
+              "value": "={{ $json.headers['content-type'] || 'application/json' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.payload }}",
+        "options": {}
+      },
+      "id": "cloud-llm-call",
+      "name": "Cloud LLM Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByIndex",
+        "options": {}
+      },
+      "id": "merge-results",
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format response with provider info\nconst input = $input.all()[0];\nconst body = $json.body || $json;\n\nlet provider = \"local\";\nlet content = \"\";\nlet tokens = 0;\n\nif (input.json.provider) {\n  // Cloud response\n  provider = input.json.provider;\n  if (body.content) {\n    content = body.content[0].text;\n  } else if (body.choices && body.choices[0]) {\n    content = body.choices[0].message.content;\n  }\n  tokens = body.usage?.total_tokens || 0;\n} else {\n  // Local response\n  provider = \"local\";\n  content = body.message?.content || body.response || \"\";\n  tokens = body.eval_count || 0;\n}\n\n// Log usage\nconst fs = require('fs');\nconst logPath = '/home/node/.n8n/llm_usage.log';\nconst logEntry = `${new Date().toISOString()} | ${provider} | ${tokens} | ${input.json.cost || 0}\n`;\ntry {\n  fs.appendFileSync(logPath, logEntry);\n} catch (e) {\n  // Log write failed, continue\n}\n\nreturn {\n  provider: provider,\n  content: content,\n  tokens: tokens,\n  cost: input.json.cost || 0,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1650, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Local Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Local Health": {
+      "main": [
+        [
+          {
+            "node": "If Local Available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Local Available": {
+      "main": [
+        [
+          {
+            "node": "Local LLM Call",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cloud Selector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Local LLM Call": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cloud Selector": {
+      "main": [
+        [
+          {
+            "node": "Cloud LLM Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cloud LLM Call": {
+      "main": [
+        [
+          {
+            "node": "Merge Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Results": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-XX",
+  "versionId": "1"
+}
+
+
+
+

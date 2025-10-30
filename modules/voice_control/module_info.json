@@ -1,0 +1,50 @@
+{
+  "module_id": "voice_control",
+  "name": "Voice Control",
+  "version": "1.0.0",
+  "description": "Voice command system with push-to-talk and whisper-cpp speech-to-text",
+  "author": "Julian Poopat",
+  "status": "active",
+  
+  "ports": {
+    "api": null,
+    "websocket": null
+  },
+  
+  "dependencies": {
+    "python_packages": ["pygame", "pyaudio", "keyboard"],
+    "external": ["whisper-cpp"],
+    "other_modules": ["event_bus"]
+  },
+  
+  "entry_points": {
+    "api": null,
+    "cli": "modules/voice_control/voice_listener.py"
+  },
+  
+  "gui": {
+    "tab_name": "Voice",
+    "icon": "microphone",
+    "priority": 6,
+    "widget_class": null
+  },
+  
+  "permissions": {
+    "file_system_access": [],
+    "network_access": false,
+    "require_api_keys": [],
+    "microphone_access": true,
+    "keyboard_hotkey": true
+  },
+  
+  "features": [
+    "push_to_talk",
+    "speech_to_text",
+    "command_mapping",
+    "hotkey_control"
+  ]
+}
+
+
+
+

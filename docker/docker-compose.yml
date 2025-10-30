@@ -1,0 +1,65 @@
+version: "3.8"
+
+services:
+  rag_api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.rag_api
+    ports:
+      - "5000:5000"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    volumes:
+      - ../.chromadb:/app/.chromadb
+      - ../config:/app/config
+    restart: unless-stopped
+
+  web_retriever:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web_retriever
+    ports:
+      - "5002:5002"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    volumes:
+      - ../config:/app/config
+    restart: unless-stopped
+
+  clo_companion:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.clo_companion
+    ports:
+      - "5001:5001"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    volumes:
+      - ../modules/clo_companion/data:/app/data
+      - ../config:/app/config
+    restart: unless-stopped
+
+  automation_hub:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.automation_hub
+    ports:
+      - "5003:5003"
+    volumes:
+      - ../config:/app/config
+    restart: unless-stopped
+
+  voice_control:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.voice_control
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ../modules/voice_control/config:/app/config
+    network_mode: "host"  # For microphone access
+    restart: unless-stopped
+
+
+
+

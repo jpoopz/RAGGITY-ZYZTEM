@@ -1,0 +1,130 @@
+{
+  "name": "LLM Cost Tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "55 23 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Daily Cron (23:55)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "readFile",
+        "fileName": "/home/node/.n8n/llm_usage.log",
+        "options": {}
+      },
+      "id": "read-log-file",
+      "name": "Read Usage Log",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse log file and aggregate costs\nconst logContent = $binary.data.toString('utf-8');\nconst lines = logContent.split('\\n').filter(l => l.trim());\n\nconst today = new Date().toISOString().split('T')[0];\nconst aggregations = {};\n\nlines.forEach(line => {\n  const parts = line.split(' | ');\n  if (parts.length >= 4) {\n    const timestamp = parts[0];\n    const provider = parts[1];\n    const tokens = parseInt(parts[2]) || 0;\n    const cost = parseFloat(parts[3]) || 0;\n    \n    // Check if entry is from today\n    if (timestamp.startsWith(today)) {\n      if (!aggregations[provider]) {\n        aggregations[provider] = {\n          tokens: 0,\n          cost: 0,\n          requests: 0\n        };\n      }\n      aggregations[provider].tokens += tokens;\n      aggregations[provider].cost += cost;\n      aggregations[provider].requests += 1;\n    }\n  }\n});\n\n// Convert to array for Google Sheets\nconst rows = [];\nfor (const [provider, data] of Object.entries(aggregations)) {\n  rows.push({\n    Date: today,\n    Provider: provider,\n    Tokens: data.tokens,\n    Requests: data.requests,\n    \"Est. Cost (USD)\": data.cost.toFixed(6)\n  });\n}\n\nif (rows.length === 0) {\n  rows.push({\n    Date: today,\n    Provider: \"none\",\n    Tokens: 0,\n    Requests: 0,\n    \"Est. Cost (USD)\": \"0.000000\"\n  });\n}\n\nreturn rows;"
+      },
+      "id": "aggregate-costs",
+      "name": "Aggregate Costs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "SPREADSHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "LLM Usage",
+          "mode": "list",
+          "cachedResultName": "LLM Usage"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Date": "={{ $json.Date }}",
+            "Provider": "={{ $json.Provider }}",
+            "Tokens": "={{ $json.Tokens }}",
+            "Requests": "={{ $json.Requests }}",
+            "Est. Cost (USD)": "={{ $json['Est. Cost (USD)'] }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "google-sheets",
+      "name": "Append to Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [850, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "1",
+          "name": "Google account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Cron (23:55)": {
+      "main": [
+        [
+          {
+            "node": "Read Usage Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Usage Log": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Costs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Costs": {
+      "main": [
+        [
+          {
+            "node": "Append to Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-XX",
+  "versionId": "1"
+}
+
+
+
+

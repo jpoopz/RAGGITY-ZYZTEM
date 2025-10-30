@@ -1,0 +1,100 @@
+{
+  "error_patterns": {
+    "ImportError": {
+      "pattern": "ImportError.*No module named ['\"]([^'\"]+)['\"]",
+      "category": "missing_dependency",
+      "auto_fix": "pip_install",
+      "fix_command": "pip install {module}",
+      "cursor_prompt": "Install missing Python package: {module}"
+    },
+    "ConnectionRefusedError": {
+      "pattern": "ConnectionRefusedError.*port (\\d+)",
+      "category": "service_down",
+      "auto_fix": "restart_service",
+      "fix_command": null,
+      "cursor_prompt": "Service on port {port} is not running. Check if the service needs to be started."
+    },
+    "ChromaDBError": {
+      "pattern": "chroma.*error|ChromaDB.*failed",
+      "category": "database_error",
+      "auto_fix": "clear_cache",
+      "fix_command": null,
+      "cursor_prompt": "ChromaDB error detected. Try clearing the .chromadb cache and reindexing."
+    },
+    "OllamaConnectionError": {
+      "pattern": "Ollama.*connection|ollama.*failed|127\\.0\\.0\\.1:11434",
+      "category": "service_down",
+      "auto_fix": "restart_service",
+      "fix_command": null,
+      "cursor_prompt": "Ollama service appears to be down. Start it with: `ollama serve`"
+    },
+    "FileNotFoundError": {
+      "pattern": "FileNotFoundError.*['\"]([^'\"]+)['\"]",
+      "category": "missing_file",
+      "auto_fix": "create_file",
+      "fix_command": null,
+      "cursor_prompt": "Missing file: {file}. Verify the path and create if needed."
+    },
+    "PermissionError": {
+      "pattern": "PermissionError|Permission denied",
+      "category": "permission_error",
+      "auto_fix": "fix_permissions",
+      "fix_command": null,
+      "cursor_prompt": "Permission error detected. Check file/directory permissions."
+    },
+    "MemoryError": {
+      "pattern": "MemoryError|out of memory",
+      "category": "resource_exhaustion",
+      "auto_fix": "reduce_workers",
+      "fix_command": null,
+      "cursor_prompt": "Memory error. Consider reducing worker count or increasing swap space."
+    },
+    "JSONDecodeError": {
+      "pattern": "JSONDecodeError|Expecting value",
+      "category": "data_corruption",
+      "auto_fix": "backup_and_fix",
+      "fix_command": null,
+      "cursor_prompt": "JSON decode error. File may be corrupted. Create backup and repair."
+    },
+    "ModuleNotFoundError": {
+      "pattern": "ModuleNotFoundError.*['\"]([^'\"]+)['\"]",
+      "category": "missing_dependency",
+      "auto_fix": "pip_install",
+      "fix_command": "pip install {module}",
+      "cursor_prompt": "Missing module: {module}. Install with: `pip install {module}`"
+    },
+    "PortInUse": {
+      "pattern": "port.*already in use|Address already in use.*(\\d+)",
+      "category": "conflict",
+      "auto_fix": "find_and_kill",
+      "fix_command": null,
+      "cursor_prompt": "Port {port} is already in use. Find the process using it and stop it."
+    }
+  },
+  "warning_patterns": {
+    "DeprecationWarning": {
+      "pattern": "DeprecationWarning",
+      "category": "deprecation",
+      "auto_fix": null,
+      "cursor_prompt": "Deprecated API usage detected. Update to newer API version."
+    },
+    "SlowQuery": {
+      "pattern": "query.*took.*seconds|slow.*query",
+      "category": "performance",
+      "auto_fix": null,
+      "cursor_prompt": "Slow query detected. Consider optimizing database indexes."
+    }
+  },
+  "info_patterns": {
+    "AutoFixApplied": {
+      "pattern": "Auto-fix.*applied|troubleshooter.*fixed",
+      "category": "success",
+      "auto_fix": null,
+      "cursor_prompt": null
+    }
+  }
+}
+
+
+
+

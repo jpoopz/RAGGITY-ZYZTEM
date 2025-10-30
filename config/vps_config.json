@@ -1,0 +1,10 @@
+{
+  "enabled": false,
+  "vps_url": "https://your-hostinger-domain.com",
+  "api_token": "",
+  "rsa_public": "remote/keys/public.pem",
+  "rsa_private": "remote/keys/private.pem",
+  "sync_interval": 900,
+  "auto_sync": false,
+  "verify_tls": true
+}

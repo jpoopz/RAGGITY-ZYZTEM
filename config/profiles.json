@@ -1,0 +1,51 @@
+{
+  "profiles": {
+    "Academic": {
+      "name": "Academic",
+      "description": "Optimized for research and academic writing",
+      "modules": {
+        "academic_rag": {"enabled": true, "auto_start": true},
+        "web_retriever": {"enabled": true, "auto_start": false},
+        "system_monitor": {"enabled": true, "auto_start": true},
+        "voice_control": {"enabled": true, "auto_start": false},
+        "clo_companion": {"enabled": false, "auto_start": false},
+        "automation_hub": {"enabled": false, "auto_start": false}
+      },
+      "memory_scope": "academic",
+      "engine_preference": "auto"
+    },
+    "Creative": {
+      "name": "Creative",
+      "description": "Optimized for design and creative work",
+      "modules": {
+        "academic_rag": {"enabled": true, "auto_start": true},
+        "clo_companion": {"enabled": true, "auto_start": false},
+        "voice_control": {"enabled": true, "auto_start": false},
+        "web_retriever": {"enabled": true, "auto_start": false},
+        "system_monitor": {"enabled": true, "auto_start": true},
+        "automation_hub": {"enabled": false, "auto_start": false}
+      },
+      "memory_scope": "creative",
+      "engine_preference": "auto"
+    },
+    "Low-Power": {
+      "name": "Low-Power",
+      "description": "CPU-only mode, minimal resource usage",
+      "modules": {
+        "academic_rag": {"enabled": true, "auto_start": true},
+        "system_monitor": {"enabled": true, "auto_start": true},
+        "voice_control": {"enabled": false, "auto_start": false},
+        "clo_companion": {"enabled": false, "auto_start": false},
+        "web_retriever": {"enabled": false, "auto_start": false},
+        "automation_hub": {"enabled": false, "auto_start": false}
+      },
+      "memory_scope": "minimal",
+      "engine_preference": "llama.cpp"
+    }
+  },
+  "default_profile": "Academic"
+}
+
+
+
+

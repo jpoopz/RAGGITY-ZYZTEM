@@ -1,0 +1,265 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    JULIAN ASSISTANT SUITE v2.0                                ║
+║                    System Architecture Overview                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         DESKTOP SHORTCUT LAUNCH                              │
+│                              (Double-Click)                                   │
+└────────────────────────────────────────────┬─────────────────────────────────┘
+                                             │
+                                             ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    RAG_Control_Panel.py v2.0                                  │
+│                     (Main Entry Point)                                        │
+└────────────────────────────────────────────┬─────────────────────────────────┘
+                                             │
+                                             ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    CORE INFRASTRUCTURE INITIALIZATION                        │
+│                                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │   Logger     │  │   Config     │  │   Module     │  │   Health     │    │
+│  │  (Unified)   │  │   Manager    │  │   Registry   │  │   Monitor    │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
+│                                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                       │
+│  │   Version    │  │   Inter-     │  │   Utils      │                       │
+│  │   Manager    │  │   Module     │  │   (Shared)   │                       │
+│  │              │  │   Bus        │  │              │                       │
+│  └──────────────┘  └──────────────┘  └──────────────┘                       │
+└────────────────────────────────────────────┬─────────────────────────────────┘
+                                             │
+                                             ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    MODULE DISCOVERY & REGISTRATION                            │
+│                                                                              │
+│  1. Scan modules/ directory                                                  │
+│  2. Read module_info.json from each module                                   │
+│  3. Validate modules (files, ports, dependencies)                             │
+│  4. Generate config/modules.json registry                                    │
+│  5. Load modules into GUI                                                    │
+└────────────────────────────────────────────┬─────────────────────────────────┘
+                                             │
+                                             ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         GUI INITIALIZATION                                    │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────┐    │
+│  │  TAB NAVIGATION                                                      │    │
+│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐      │    │
+│  │  │Academic │ │  CLO    │ │   Web   │ │  Auto   │ │ System  │      │    │
+│  │  │  RAG    │ │Companion│ │Retriever│ │   Hub   │ │ Monitor │      │    │
+│  │  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘      │    │
+│  └────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌───────────────────────────┐  ┌──────────────────────────────────────┐   │
+│  │  ACTIVE MODULE PANEL      │  │  SUITE-WIDE STATUS                    │   │
+│  │  • Module Controls        │  │  • All Module Health                  │   │
+│  │  • Module Status         │  │  • Resource Usage                     │   │
+│  │  • Module Logs           │  │  • Quick Actions                      │   │
+│  └───────────────────────────┘  └──────────────────────────────────────┘   │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────┐    │
+│  │  STATUS MESSAGES CONSOLE                                            │    │
+│  └────────────────────────────────────────────────────────────────────┘    │
+└────────────────────────────────────────────┬─────────────────────────────────┘
+                                             │
+                                             ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                    AUTO-START MODULES (Per Config)                            │
+│                                                                              │
+│  For each module in "auto_start_modules" list:                              │
+│    ├─ Check if enabled                                                      │
+│    ├─ Verify port availability                                              │
+│    ├─ Launch Flask server (subprocess)                                       │
+│    ├─ Wait for health check                                                 │
+│    └─ Update status indicator                                               │
+└────────────────────────────────────────────┬─────────────────────────────────┘
+                                             │
+                                             ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         SYSTEM MONITOR STARTS                                 │
+│                    (Always Active - No Port Needed)                          │
+│                                                                              │
+│  • Monitor Ollama process                                                    │
+│  • Track all Flask server PIDs                                               │
+│  • Monitor CPU/GPU/RAM usage                                                 │
+│  • Update GUI indicators                                                     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                         MODULE COMMUNICATION                                  │
+│                                                                              │
+│  ┌──────────────┐         ┌──────────────────────┐         ┌─────────────┐│
+│  │  Academic    │────────►│  Inter-Module Bus    │◄────────│  CLO        ││
+│  │  RAG Module  │ Event   │  (Pub/Sub System)    │ Event   │  Companion  ││
+│  │   :5000      │────────►│                      │◄────────│  :5001      ││
+│  └──────────────┘         └──────────────────────┘         └─────────────┘│
+│       │                          │                                │         │
+│       │                          │                                │         │
+│       ▼                          ▼                                ▼         │
+│  ┌──────────────┐         ┌──────────────────────┐         ┌─────────────┐│
+│  │  Web         │────────►│  Shared Data Store   │◄────────│  Automation ││
+│  │  Retriever   │         │  (JSON files)         │         │  Hub        ││
+│  │   :5002      │         │                       │         │  :5003      ││
+│  └──────────────┘         └──────────────────────┘         └─────────────┘│
+│                                                                              │
+│  Communication Methods:                                                     │
+│  1. Event Bus (Pub/Sub) - Real-time events                                 │
+│  2. HTTP Requests - Direct module-to-module calls                           │
+│  3. Shared Data Store - Persistent data sharing                             │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+
+                         PORT ALLOCATION STRATEGY
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  Reserved Range: 5000-5999                                                    │
+│                                                                              │
+│  Port 5000 ──► Academic RAG Assistant                                        │
+│  Port 5001 ──► CLO Companion                                                 │
+│  Port 5002 ──► Web Retriever                                                 │
+│  Port 5003 ──► Automation Hub                                               │
+│  Port 5999 ──► Reserved for System Monitor (if needed)                       │
+│                                                                              │
+│  Conflict Resolution:                                                         │
+│  • Check registry first                                                      │
+│  • Test port availability (socket)                                           │
+│  • Auto-reassign if needed (with user notification)                          │
+│  • Log all port assignments                                                  │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+
+                      CONFIGURATION HIERARCHY
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  config/                                                                     │
+│  ├── suite_config.json          ◄─── Main suite settings                    │
+│  │   ├── user_profile                                                       │
+│  │   ├── startup (auto_start_modules)                                       │
+│  │   ├── logging                                                            │
+│  │   └── modules (enabled/disabled)                                         │
+│  │                                                                           │
+│  ├── modules.json               ◄─── Auto-generated registry               │
+│  │   └── registered_modules + port_allocations                               │
+│  │                                                                           │
+│  └── [module]_config.json       ◄─── Per-module configs                     │
+│      ├── academic_rag_config.json                                           │
+│      ├── clo_companion_config.json                                          │
+│      ├── web_retriever_config.json                                          │
+│      └── automation_hub_config.json                                          │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+
+                      HEALTH MONITORING FLOW
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  Health Monitor (Runs every 30 seconds)                                      │
+│                                                                              │
+│  For each registered module:                                                 │
+│    │                                                                          │
+│    ├─► Check Process Alive? (PID)                                            │
+│    │   └─► ❌ Dead → Status: Unhealthy                                       │
+│    │                                                                          │
+│    ├─► Check Port Responding? (HTTP GET /health)                             │
+│    │   └─► ❌ Timeout → Status: Unhealthy                                   │
+│    │                                                                          │
+│    ├─► Check Dependencies (from module_info.json)                            │
+│    │   ├─► Ollama running?                                                   │
+│    │   ├─► ChromaDB accessible?                                              │
+│    │   └─► Other modules available?                                          │
+│    │                                                                          │
+│    └─► Update GUI Status Indicator                                           │
+│        ├─► ✅ Green: All checks pass                                          │
+│        ├─► ⚠️ Yellow: Warnings                                                │
+│        └─► ❌ Red: Critical failure                                           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+
+                      ADDING A NEW MODULE (Zero Core Changes)
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  STEP 1: Create Module Folder                                                │
+│  modules/my_new_module/                                                      │
+│  ├── __init__.py                                                             │
+│  ├── module_info.json  ◄─── REQUIRED                                        │
+│  └── api.py                                                                  │
+│                                                                              │
+│  STEP 2: Define module_info.json                                             │
+│  {                                                                           │
+│    "module_id": "my_new_module",                                             │
+│    "name": "My New Module",                                                  │
+│    "version": "1.0.0",                                                       │
+│    "ports": {"api": 5004},                                                   │
+│    "dependencies": {...},                                                    │
+│    "gui": {"tab_name": "New", "priority": 6}                                 │
+│  }                                                                           │
+│                                                                              │
+│  STEP 3: Restart Suite                                                        │
+│  └─► Automatic discovery                                                     │
+│  └─► Validation                                                              │
+│  └─► Registration                                                            │
+│  └─► GUI tab appears                                                         │
+│                                                                              │
+│  STEP 4: Configure & Enable                                                   │
+│  └─► Edit suite_config.json                                                  │
+│  └─► Create config/my_new_module_config.json                                 │
+│  └─► Enable module                                                           │
+│                                                                              │
+│  ✅ Module ready - NO CORE CODE CHANGES NEEDED                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+
+                      EXAMPLE: RAG → CLO COMMUNICATION
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                                                              │
+│  User: "How should I modify this dress for sustainability?"                  │
+│                                                                              │
+│  [Academic RAG Processes]                                                    │
+│    ├─► Retrieves context from notes                                          │
+│    ├─► Generates response with Llama 3.2                                     │
+│    └─► Publishes event:                                                      │
+│        {                                                                     │
+│          "event": "design_query_received",                                   │
+│          "query": "How should I modify this dress...",                       │
+│          "context": "sustainable fashion guidelines from notes",             │
+│          "sender": "academic_rag"                                             │
+│        }                                                                     │
+│                                                                              │
+│  [Inter-Module Bus Routes Event]                                            │
+│                                                                              │
+│  [CLO Companion Receives Event]                                             │
+│    ├─► Opens CLO3D file                                                      │
+│    ├─► Generates design suggestions                                          │
+│    ├─► Applies modifications                                                 │
+│    └─► Publishes: "design_modification_applied"                              │
+│                                                                              │
+│  [Academic RAG Receives Confirmation]                                       │
+│    └─► Includes CLO actions in final response                                │
+│                                                                              │
+│  User sees: Complete answer with both academic context AND design actions      │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                       END OF ARCHITECTURE DIAGRAM
+═══════════════════════════════════════════════════════════════════════════════
+
+
+
+

@@ -1,0 +1,48 @@
+{
+  "module_id": "automation_hub",
+  "name": "Automation Hub",
+  "version": "1.0.0",
+  "description": "Connects to n8n, Supabase, or Hostinger VPS workflows",
+  "author": "Julian Poopat",
+  "status": "stub",
+  
+  "ports": {
+    "api": 5003,
+    "websocket": null
+  },
+  
+  "dependencies": {
+    "python_packages": ["flask", "requests"],
+    "external": [],
+    "other_modules": []
+  },
+  
+  "entry_points": {
+    "api": "modules/automation_hub/api.py",
+    "cli": null
+  },
+  
+  "gui": {
+    "tab_name": "Automation",
+    "icon": "automation",
+    "priority": 4,
+    "widget_class": null
+  },
+  
+  "permissions": {
+    "file_system_access": [],
+    "network_access": true,
+    "require_api_keys": ["n8n_webhook_token"]
+  },
+  
+  "features": [
+    "n8n_integration",
+    "supabase_sync",
+    "vps_tasks",
+    "scheduled_jobs"
+  ]
+}
+
+
+
+

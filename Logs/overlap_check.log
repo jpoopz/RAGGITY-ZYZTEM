@@ -1,0 +1,7 @@
+[2025-10-30 00:29:24] [OVERLAP] === Starting Overlap Resolution ===
+[2025-10-30 00:29:24] [OVERLAP] Timestamp: 2025-10-30 00:29:24
+[2025-10-30 00:29:25] [OVERLAP] Found 2 instances of ollama, keeping most recent (PID 20072)
+[2025-10-30 00:29:25] [OVERLAP] Terminating duplicate ollama (PID 6540)
+[2025-10-30 00:29:25] [OVERLAP] Terminated process 6540 gracefully
+[2025-10-30 00:29:26] [OVERLAP] === Overlap Resolution Complete ===
+[2025-10-30 00:29:28] [OVERLAP] ✅ System ready - no overlapping instances

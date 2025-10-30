@@ -1,0 +1,45 @@
+{
+  "module_id": "clo_companion",
+  "name": "CLO Companion",
+  "version": "1.0.0",
+  "description": "Bridge between Llama 3.2 and CLO3D for natural language design actions",
+  "author": "Julian Poopat",
+  "status": "active",
+  
+  "ports": {
+    "api": 5001,
+    "websocket": null
+  },
+  
+  "dependencies": {
+    "python_packages": ["flask", "requests"],
+    "external": ["ollama", "llama3.2", "CLO3D"],
+    "other_modules": ["academic_rag", "web_retriever"]
+  },
+  
+  "entry_points": {
+    "api": "modules/clo_companion/api.py",
+    "cli": null
+  },
+  
+  "gui": {
+    "tab_name": "CLO",
+    "icon": "design",
+    "priority": 2,
+    "widget_class": null
+  },
+  
+  "permissions": {
+    "file_system_access": ["clo_companion_data"],
+    "network_access": false,
+    "require_api_keys": []
+  },
+  
+  "features": [
+    "design_commands",
+    "undo_redo",
+    "render_preview",
+    "export_design"
+  ]
+}
+

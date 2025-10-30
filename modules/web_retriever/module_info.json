@@ -1,0 +1,47 @@
+{
+  "module_id": "web_retriever",
+  "name": "Web Retriever",
+  "version": "1.0.0",
+  "description": "Web crawler and summarizer using local LLM, writes insights to Obsidian",
+  "author": "Julian Poopat",
+  "status": "stub",
+  
+  "ports": {
+    "api": 5002,
+    "websocket": null
+  },
+  
+  "dependencies": {
+    "python_packages": ["flask", "requests", "beautifulsoup4"],
+    "external": ["ollama", "llama3.2"],
+    "other_modules": ["academic_rag"]
+  },
+  
+  "entry_points": {
+    "api": "modules/web_retriever/api.py",
+    "cli": null
+  },
+  
+  "gui": {
+    "tab_name": "Web",
+    "icon": "web",
+    "priority": 3,
+    "widget_class": null
+  },
+  
+  "permissions": {
+    "file_system_access": ["obsidian_vault_path/Notes/Web_Insights"],
+    "network_access": true,
+    "require_api_keys": []
+  },
+  
+  "features": [
+    "web_search",
+    "content_summarization",
+    "obsidian_writeback"
+  ]
+}
+
+
+
+

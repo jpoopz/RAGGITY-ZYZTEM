@@ -1,0 +1,159 @@
+"""
+Generate LLM Router Setup Report
+Creates comprehensive report of Dynamic LLM Router setup
+"""
+
+import os
+import sys
+import json
+from datetime import datetime
+
+sys.stdout.reconfigure(encoding='utf-8')
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DESKTOP_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
+
+def generate_report():
+    """Generate LLM Router setup report"""
+    
+    report = []
+    report.append("# Dynamic LLM Router Setup Report")
+    report.append("")
+    report.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    report.append("")
+    report.append("---")
+    report.append("")
+    
+    # n8n Configuration
+    report.append("## 🔄 n8n Configuration")
+    report.append("")
+    
+    n8n_config_path = os.path.join(BASE_DIR, "config", "n8n_config.json")
+    if os.path.exists(n8n_config_path):
+        with open(n8n_config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        report.append(f"- **n8n URL:** {config.get('url', 'Not configured')}")
+        report.append(f"- **LLM Router URL:** {config.get('llm_router', 'Not configured')}")
+        report.append(f"- **Enabled:** {config.get('enabled', False)}")
+        report.append("")
+    else:
+        report.append("- Configuration file not found")
+        report.append("")
+    
+    # Router Status
+    report.append("## 📊 LLM Router Status")
+    report.append("")
+    try:
+        from core.llm_router import get_llm_router
+        router = get_llm_router()
+        status = router.get_status()
+        
+        report.append(f"- **Status:** {status.get('status_text', 'Unknown')}")
+        report.append(f"- **Local Available:** {status.get('local_available', False)}")
+        report.append(f"- **Router Available:** {status.get('router_available', False)}")
+        report.append(f"- **Fallback Active:** {status.get('fallback_active', False)}")
+        report.append("")
+    except Exception as e:
+        report.append(f"- ⚠️ Error checking status: {e}")
+        report.append("")
+    
+    # Workflows
+    report.append("## 🔄 n8n Workflows")
+    report.append("")
+    workflows_dir = os.path.join(BASE_DIR, "remote", "n8n_workflows")
+    
+    if os.path.exists(workflows_dir):
+        workflow_files = [f for f in os.listdir(workflows_dir) if f.endswith('.json')]
+        report.append("**Available Workflows:**")
+        report.append("")
+        for wf_file in workflow_files:
+            if 'llm' in wf_file.lower():
+                report.append(f"- ✅ {wf_file}")
+            else:
+                report.append(f"- {wf_file}")
+    else:
+        report.append("Workflows directory not found")
+    
+    report.append("")
+    
+    # Integration Status
+    report.append("## 🔗 Integration Status")
+    report.append("")
+    report.append("- ✅ LLM Router client module created (`core/llm_router.py`)")
+    report.append("- ✅ Smart Troubleshooter integration (fallback detection)")
+    report.append("- ✅ Event bus integration (`llm_fallback_active` events)")
+    report.append("- ✅ GUI status indicator (🟢/🟡/🔴)")
+    report.append("- ✅ Query LLM integration (automatic routing)")
+    report.append("")
+    
+    # Setup Steps
+    report.append("## 📋 Setup Steps")
+    report.append("")
+    report.append("1. **SSH into VPS and setup n8n environment:**")
+    report.append("   ```bash")
+    report.append("   cd ~/julian-assistant/remote")
+    report.append("   chmod +x setup_n8n_env.sh")
+    report.append("   ./setup_n8n_env.sh")
+    report.append("   ```")
+    report.append("")
+    report.append("2. **Import workflows in n8n:**")
+    report.append("   - Upload `dynamic_llm_router.json`")
+    report.append("   - Upload `llm_cost_tracker.json`")
+    report.append("   - Activate both workflows")
+    report.append("")
+    report.append("3. **Configure API keys in n8n:**")
+    report.append("   - Set environment variables: `OPENAI_API_KEY`, `CLAUDE_API_KEY`, `MISTRAL_API_KEY`")
+    report.append("   - Or use n8n credential management")
+    report.append("")
+    report.append("4. **Update Julian Suite config:**")
+    report.append("   - Open Settings tab")
+    report.append("   - Set `llm_router`: `https://vps.julianassistant.com/webhook/llm-route`")
+    report.append("")
+    report.append("5. **Test routing:**")
+    report.append("   - Run Health Check in Control Panel")
+    report.append("   - Verify LLM status indicator shows correct status")
+    report.append("   - Test with Ollama stopped (should fallback)")
+    report.append("")
+    
+    # Cost Tracking
+    report.append("## 💰 Cost Tracking")
+    report.append("")
+    report.append("- ✅ Daily cost aggregation workflow")
+    report.append("- ✅ Google Sheets integration")
+    report.append("- ✅ Usage logging to `Logs/llm_usage.log`")
+    report.append("")
+    
+    report.append("---")
+    report.append("")
+    report.append("*Report generated by Julian Assistant Suite Dynamic LLM Router*")
+    report.append("")
+    
+    # Write report
+    report_text = "\n".join(report)
+    
+    # Save to root
+    report_path = os.path.join(BASE_DIR, "LLM_ROUTER_SETUP_REPORT.md")
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write(report_text)
+    
+    # Copy to Desktop
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    desktop_report = os.path.join(DESKTOP_PATH, f"LLM_ROUTER_SETUP_REPORT_{timestamp}.md")
+    
+    try:
+        import shutil
+        shutil.copy2(report_path, desktop_report)
+        print(f"✅ Report saved to: {report_path}")
+        print(f"✅ Desktop copy: {desktop_report}")
+    except Exception as e:
+        print(f"⚠️ Could not copy to Desktop: {e}")
+    
+    return report_path
+
+if __name__ == "__main__":
+    generate_report()
+
+
+
+
