@@ -1,449 +1,216 @@
 """
-Cloud Bridge Client - Secure synchronization between local and VPS
-Handles bi-directional context sync, remote execution, and encrypted transport
+Cloud Bridge Client
+Provides authenticated communication with remote VPS/cloud services
+Supports events, backups, and retry logic
 """
 
+from __future__ import annotations
+
 import os
-import sys
-import json
-import gzip
-import hashlib
 import requests
 import time
-import threading
-from datetime import datetime, timedelta
-from typing import Dict, Optional, Any
+import json
+import base64
+import hashlib
+from typing import Any, Dict
 
-# Force UTF-8
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
+from logger import get_logger
+from .config import CFG
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, BASE_DIR)
+log = get_logger("bridge")
 
-try:
-    from logger import log, log_exception
-except ImportError:
-    def log(msg, category="CLOUD"):
-        print(f"[{category}] {msg}")
-    def log_exception(category="ERROR", exception=None, context=""):
-        print(f"[{category}] {context}: {exception}")
-
-try:
-    from cryptography.fernet import Fernet
-    from cryptography.hazmat.primitives import hashes
-    from cryptography.hazmat.primitives.asymmetric import rsa, padding
-    from cryptography.hazmat.primitives import serialization
-    ENCRYPTION_AVAILABLE = True
-except ImportError:
-    ENCRYPTION_AVAILABLE = False
-    log("cryptography not available, encryption disabled", "CLOUD", level="WARNING")
 
 class CloudBridge:
-    """Manages secure synchronization with VPS"""
+    """Client for cloud/VPS API communication"""
     
-    def __init__(self):
-        self.config = self._load_config()
-        self.enabled = self.config.get("enabled", False)
-        self.vps_url = self.config.get("vps_url", "")
-        self.api_token = self.config.get("api_token", "")
-        self.sync_interval = self.config.get("sync_interval", 900)  # 15 minutes
-        self.last_sync_time = None
-        self.last_latency_ms = None
-        self.connected = False
+    def __init__(self, base_url: str | None = None, api_key: str | None = None):
+        self.base_url = base_url or os.getenv("CLOUD_URL", "https://your-vps-domain/api")
+        self.api_key = api_key or os.getenv("CLOUD_KEY", "")
         
-        # Encryption keys
-        self.rsa_public_key = None
-        self.rsa_private_key = None
-        self.aes_key = None
-        self._load_keys()
+        # Setup session with headers
+        self.session = requests.Session()
+        self.session.headers.update({"User-Agent": "RAGGITY-CLIENT"})
         
-        # Auto-sync thread
-        self.auto_sync_enabled = self.config.get("auto_sync", False)
-        self.sync_thread = None
-        self.running = False
-        self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 5
+        if self.api_key:
+            self.session.headers["Authorization"] = f"Bearer {self.api_key}"
         
-        if self.enabled and self.auto_sync_enabled:
-            self.start_auto_sync()
-    
-    def _load_config(self) -> dict:
-        """Load VPS configuration (with decryption)"""
-        try:
-            config_path = os.path.join(BASE_DIR, "config", "vps_config.json")
-            if os.path.exists(config_path):
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                
-                # Decrypt sensitive values
-                try:
-                    from core.config_encrypt import get_config_encryptor
-                    encryptor = get_config_encryptor()
-                    config = encryptor.decrypt_config(config, ['api_token', 'auth_token'])
-                except:
-                    pass  # Continue with plaintext if decryption fails
-                
-                return config
-        except Exception as e:
-            log(f"Error loading VPS config: {e}", "CLOUD", level="ERROR")
+        log.info(f"CloudBridge initialized: {self.base_url}")
+
+    def _req(self, method: str, path: str, **kw) -> Dict[str, Any]:
+        """
+        Make HTTP request with retry logic
         
-        return {
-            "enabled": False,
-            "vps_url": "",
-            "api_token": "",
-            "sync_interval": 900,
-            "auto_sync": False
-        }
-    
-    def _load_keys(self):
-        """Load RSA and AES keys"""
-        try:
-            keys_dir = os.path.join(BASE_DIR, "remote", "keys")
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            path: API path
+            **kw: Additional keyword arguments for requests
             
-            # RSA Public Key
-            public_key_path = os.path.join(keys_dir, "public.pem")
-            if os.path.exists(public_key_path) and ENCRYPTION_AVAILABLE:
-                with open(public_key_path, 'rb') as f:
-                    self.rsa_public_key = serialization.load_pem_public_key(f.read())
+        Returns:
+            JSON response as dictionary
             
-            # RSA Private Key
-            private_key_path = os.path.join(keys_dir, "private.pem")
-            if os.path.exists(private_key_path) and ENCRYPTION_AVAILABLE:
-                with open(private_key_path, 'rb') as f:
-                    self.rsa_private_key = serialization.load_pem_private_key(
-                        f.read(),
-                        password=None
-                    )
-            
-            # AES Key (shared secret)
-            aes_key_path = os.path.join(keys_dir, "aes.key")
-            if os.path.exists(aes_key_path) and ENCRYPTION_AVAILABLE:
-                with open(aes_key_path, 'rb') as f:
-                    self.aes_key = f.read()
-            elif ENCRYPTION_AVAILABLE:
-                # Generate and save
-                self.aes_key = Fernet.generate_key()
-                os.makedirs(keys_dir, exist_ok=True)
-                with open(aes_key_path, 'wb') as f:
-                    f.write(self.aes_key)
-                
-        except Exception as e:
-            log(f"Error loading encryption keys: {e}", "CLOUD", level="WARNING")
-    
-    def encrypt_payload(self, data: dict) -> bytes:
-        """Encrypt payload using AES"""
-        if not ENCRYPTION_AVAILABLE or not self.aes_key:
-            return json.dumps(data).encode('utf-8')
+        Raises:
+            RuntimeError: If all retries fail
+        """
+        url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
         
-        try:
-            fernet = Fernet(self.aes_key)
-            return fernet.encrypt(json.dumps(data).encode('utf-8'))
-        except Exception as e:
-            log(f"Encryption error: {e}", "CLOUD", level="ERROR")
-            return json.dumps(data).encode('utf-8')
-    
-    def decrypt_payload(self, encrypted_data: bytes) -> dict:
-        """Decrypt payload using AES"""
-        if not ENCRYPTION_AVAILABLE or not self.aes_key:
+        for attempt in range(3):
             try:
-                return json.loads(encrypted_data.decode('utf-8'))
-            except:
-                return {}
-        
-        try:
-            fernet = Fernet(self.aes_key)
-            decrypted = fernet.decrypt(encrypted_data)
-            return json.loads(decrypted.decode('utf-8'))
-        except Exception as e:
-            log(f"Decryption error: {e}", "CLOUD", level="ERROR")
-            return {}
-    
-    def verify_health(self) -> bool:
-        """Ping VPS and check connection with retry logic"""
-        try:
-            if not self.vps_url:
-                self.connected = False
-                return False
-            
-            # TLS verification (from config)
-            verify_tls = self.config.get("verify_tls", True)
-            
-            start_time = time.time()
-            response = requests.get(
-                f"{self.vps_url}/ping",
-                timeout=5,
-                verify=verify_tls  # TLS certificate verification
-            )
-            elapsed_ms = int((time.time() - start_time) * 1000)
-            
-            if response.status_code == 200:
-                self.connected = True
-                self.last_latency_ms = elapsed_ms
-                self.reconnect_attempts = 0  # Reset on success
-                log(f"VPS health check OK ({elapsed_ms}ms)", "CLOUD")
-                return True
-            else:
-                self.connected = False
-                self.reconnect_attempts += 1
-                log(f"VPS health check failed: {response.status_code}", "CLOUD", level="WARNING")
-                return False
+                log.info(f"[Bridge] {method} {url} (attempt {attempt + 1}/3)")
                 
-        except Exception as e:
-            self.connected = False
-            self.reconnect_attempts += 1
-            log(f"VPS health check error: {e}", "CLOUD", level="WARNING")
-            return False
-    
-    def reconnect_with_backoff(self) -> bool:
-        """Reconnect to VPS with exponential backoff"""
-        retry_interval = min(10 * (2 ** min(self.reconnect_attempts, 4)), 120)  # Max 2 minutes
-        
-        log(f"Attempting to reconnect (attempt {self.reconnect_attempts + 1})...", "CLOUD")
-        time.sleep(retry_interval)
-        
-        return self.verify_health()
-    
-    def sync_context(self) -> bool:
-        """
-        Push local context bundle to VPS with reconnect logic
-        """
-        try:
-            if not self.enabled or not self.vps_url:
-                return False
-            
-            # Verify health first
-            if not self.connected:
-                if not self.verify_health():
-                    # Try to reconnect
-                    if not self.reconnect_with_backoff():
-                        log("Cannot sync: VPS unreachable", "CLOUD", level="WARNING")
-                        return False
-            
-            # Build local context
-            from core.context_graph import get_context_graph
-            from core.memory_manager import get_memory_manager
-            
-            graph = get_context_graph(user="julian")
-            context = graph.build_context(include_rag=False)  # Don't include RAG for sync
-            
-            # Compress if large
-            context_json = json.dumps(context)
-            if len(context_json.encode('utf-8')) > 2 * 1024 * 1024:  # > 2MB
-                compressed = gzip.compress(context_json.encode('utf-8'))
-                context_json = compressed
-            
-            # Encrypt if enabled
-            encrypted = False
-            payload_data = context_json
-            if ENCRYPTION_AVAILABLE and self.aes_key:
-                encrypted = True
-                payload_data = self.encrypt_payload(context)
-            
-            # Send to VPS
-            headers = {}
-            if self.api_token:
-                headers["Authorization"] = f"Bearer {self.api_token}"
-            
-            payload = {
-                "context_json": context_json.decode('utf-8') if isinstance(context_json, bytes) else context_json,
-                "timestamp": datetime.now().isoformat(),
-                "user": "julian"
-            }
-            
-            # TLS verification (from config)
-            verify_tls = self.config.get("verify_tls", True)
-            
-            response = requests.post(
-                f"{self.vps_url}/context/push",
-                json=payload,
-                headers=headers,
-                timeout=30,
-                verify=verify_tls  # TLS certificate verification
-            )
-            
-            if response.status_code == 200:
-                self.last_sync_time = datetime.now()
-                sync_time_str = self.last_sync_time.strftime("%H:%M:%S")
-                log(f"☁ Synced successfully at {sync_time_str}", "CLOUD")
-                return True
-            else:
-                log(f"Context sync failed: {response.status_code}", "CLOUD", level="ERROR")
-                self.connected = False
-                return False
+                r = self.session.request(method, url, timeout=15, **kw)
+                r.raise_for_status()
                 
-        except Exception as e:
-            log_exception("CLOUD", e, "Error syncing context")
-            self.connected = False
-            return False
-    
-    def fetch_remote_context(self) -> Optional[Dict[str, Any]]:
-        """
-        Pull latest VPS context bundle
-        """
-        try:
-            if not self.enabled or not self.vps_url:
-                return None
-            
-            headers = {}
-            if self.api_token:
-                headers["Authorization"] = f"Bearer {self.api_token}"
-            
-            # TLS verification (from config)
-            verify_tls = self.config.get("verify_tls", True)
-            
-            response = requests.get(
-                f"{self.vps_url}/context/pull",
-                params={"user": "julian"},
-                headers=headers,
-                timeout=10,
-                verify=verify_tls  # TLS certificate verification
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("status") == "success":
-                    remote_context = data.get("context")
-                    log("Remote context fetched from VPS", "CLOUD")
-                    return remote_context
-                else:
-                    log("No remote context available", "CLOUD")
-                    return None
-            else:
-                log(f"Failed to fetch remote context: {response.status_code}", "CLOUD", level="ERROR")
-                return None
+                log.info(f"[Bridge] {method} {url} success")
+                return r.json()
                 
-        except Exception as e:
-            log_exception("CLOUD", e, "Error fetching remote context")
-            return None
-    
-    def remote_execute(self, task: str, params: dict) -> Optional[Dict[str, Any]]:
-        """
-        Offload task to VPS for execution
-        """
-        try:
-            if not self.enabled or not self.vps_url:
-                return None
-            
-            # Encrypt params if enabled
-            encrypted = False
-            payload_str = ""
-            if ENCRYPTION_AVAILABLE and self.aes_key:
-                encrypted = True
-                encrypted_bytes = self.encrypt_payload(params)
-                payload_str = encrypted_bytes.decode('latin-1')  # Base64-safe encoding
-            
-            request_data = {
-                "task": task,
-                "params": params if not encrypted else {},
-                "encrypted": encrypted,
-                "payload": payload_str
-            }
-            
-            headers = {}
-            if self.api_token:
-                headers["Authorization"] = f"Bearer {self.api_token}"
-            
-            response = requests.post(
-                f"{self.vps_url}/execute",
-                json=request_data,
-                headers=headers,
-                timeout=120  # Long timeout for remote execution
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                log(f"Remote task '{task}' executed successfully", "CLOUD")
-                return result.get("result")
-            else:
-                log(f"Remote task '{task}' failed: {response.status_code}", "CLOUD", level="ERROR")
-                return None
+            except requests.exceptions.HTTPError as e:
+                log.error(f"[Bridge] HTTP error {e.response.status_code}: {url}")
+                if e.response.status_code in [401, 403, 404]:
+                    # Don't retry auth/not found errors
+                    raise
+                log.warning(f"[Bridge] Retry {attempt + 1}/3 after HTTP error")
+                time.sleep(2 ** attempt)  # Exponential backoff
                 
-        except Exception as e:
-            log_exception("CLOUD", e, f"Error executing remote task '{task}'")
-            return None
-    
-    def start_auto_sync(self):
-        """Start background auto-sync thread"""
-        if self.running:
-            return
+            except requests.exceptions.Timeout:
+                log.warning(f"[Bridge] Timeout on {url}; retry {attempt + 1}/3")
+                time.sleep(2 ** attempt)
+                
+            except requests.exceptions.ConnectionError as e:
+                log.warning(f"[Bridge] Connection error: {e}; retry {attempt + 1}/3")
+                time.sleep(2 ** attempt)
+                
+            except Exception as e:
+                log.error(f"[Bridge] Unexpected error: {e}")
+                if attempt == 2:
+                    raise
+                time.sleep(2 ** attempt)
         
-        self.running = True
+        raise RuntimeError(f"Bridge call failed after 3 attempts: {url}")
+
+    def health(self) -> Dict[str, Any]:
+        """
+        Check cloud service health
         
-        def sync_loop():
-            consecutive_errors = 0
-            adaptive_sleep = self.sync_interval
+        Returns:
+            Health status dictionary
+        """
+        return self._req("GET", "health")
+
+    def send_event(self, name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Send event to cloud service
+        
+        Args:
+            name: Event name
+            payload: Event data
             
-            while self.running:
-                try:
-                    if self.enabled and self.auto_sync_enabled:
-                        # Verify health with reconnect logic
-                        if not self.connected:
-                            if not self.reconnect_with_backoff():
-                                consecutive_errors += 1
-                                adaptive_sleep = min(adaptive_sleep * 1.5, 1800)  # Max 30 min
-                                time.sleep(adaptive_sleep)
-                                continue
-                        
-                        # Sync if connected
-                        if self.connected:
-                            success = self.sync_context()
-                            if success:
-                                consecutive_errors = 0
-                                adaptive_sleep = self.sync_interval  # Reset to normal
-                            else:
-                                consecutive_errors += 1
-                                adaptive_sleep = min(adaptive_sleep * 1.2, 900)  # Max 15 min
-                    else:
-                        # Not enabled, sleep normally
-                        adaptive_sleep = self.sync_interval
-                    
-                    time.sleep(adaptive_sleep)
-                except Exception as e:
-                    log(f"Error in auto-sync loop: {e}", "CLOUD", level="ERROR")
-                    consecutive_errors += 1
-                    adaptive_sleep = min(adaptive_sleep * 1.5, 1800)
-                    time.sleep(min(adaptive_sleep, 300))  # Max 5 min wait on error
-        
-        self.sync_thread = threading.Thread(target=sync_loop, daemon=True)
-        self.sync_thread.start()
-        log(f"Auto-sync started (interval: {self.sync_interval}s)", "CLOUD")
-    
-    def stop_auto_sync(self):
-        """Stop background auto-sync gracefully"""
-        if not self.running:
-            return
-        
-        self.running = False
-        
-        # Wait for thread to finish (with timeout)
-        if self.sync_thread and self.sync_thread.is_alive():
-            self.sync_thread.join(timeout=5)
-            if self.sync_thread.is_alive():
-                log("Auto-sync thread did not terminate cleanly", "CLOUD", level="WARNING")
-        
-        log("Auto-sync stopped", "CLOUD")
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Get current bridge status"""
-        return {
-            "enabled": self.enabled,
-            "connected": self.connected,
-            "vps_url": self.vps_url,
-            "last_sync_time": self.last_sync_time.isoformat() if self.last_sync_time else None,
-            "last_latency_ms": self.last_latency_ms,
-            "auto_sync_enabled": self.auto_sync_enabled,
-            "sync_interval": self.sync_interval,
-            "encryption_available": ENCRYPTION_AVAILABLE
+        Returns:
+            Response from server
+        """
+        data = {
+            "event": name,
+            "payload": payload,
+            "ts": time.time(),
+            "signature": self._sign(json.dumps(payload, sort_keys=True))
         }
+        
+        log.info(f"[Bridge] Sending event: {name}")
+        return self._req("POST", "events", json=data)
 
-# Global cloud bridge instance
-_cloud_bridge_instance = None
+    def push_vector_backup(self, vector_path: str) -> Dict[str, Any]:
+        """
+        Upload local FAISS index or data chunk to remote for backup
+        
+        Args:
+            vector_path: Path to vector file to backup
+            
+        Returns:
+            Backup confirmation
+            
+        Raises:
+            FileNotFoundError: If vector_path doesn't exist
+        """
+        if not os.path.exists(vector_path):
+            log.error(f"[Bridge] Vector file not found: {vector_path}")
+            raise FileNotFoundError(vector_path)
+        
+        log.info(f"[Bridge] Reading vector file: {vector_path}")
+        
+        # Read and encode file
+        with open(vector_path, "rb") as f:
+            data_bytes = f.read()
+        
+        # Base64 encode for JSON transport
+        b64_data = base64.b64encode(data_bytes).decode()
+        
+        log.info(f"[Bridge] Encoded {len(data_bytes)} bytes -> {len(b64_data)} chars")
+        
+        payload = {
+            "file": os.path.basename(vector_path),
+            "data": b64_data,
+            "size": len(data_bytes),
+            "checksum": hashlib.md5(data_bytes).hexdigest()
+        }
+        
+        log.info(f"[Bridge] Uploading backup: {os.path.basename(vector_path)}")
+        result = self._req("POST", "backup/vector", json=payload)
+        
+        log.info(f"[Bridge] Backup complete: {os.path.basename(vector_path)}")
+        return result
 
-def get_cloud_bridge():
-    """Get global cloud bridge (singleton)"""
-    global _cloud_bridge_instance
-    if _cloud_bridge_instance is None:
-        _cloud_bridge_instance = CloudBridge()
-    return _cloud_bridge_instance
+    def pull_vector_backup(self, filename: str, destination: str) -> bool:
+        """
+        Download vector backup from cloud
+        
+        Args:
+            filename: Name of backup file
+            destination: Local path to save
+            
+        Returns:
+            True if successful
+        """
+        try:
+            log.info(f"[Bridge] Downloading backup: {filename}")
+            
+            result = self._req("GET", f"backup/vector/{filename}")
+            
+            # Decode base64 data
+            b64_data = result.get("data", "")
+            data_bytes = base64.b64decode(b64_data)
+            
+            # Verify checksum if provided
+            if "checksum" in result:
+                local_checksum = hashlib.md5(data_bytes).hexdigest()
+                if local_checksum != result["checksum"]:
+                    log.error("[Bridge] Checksum mismatch on download")
+                    return False
+            
+            # Write to file
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            with open(destination, "wb") as f:
+                f.write(data_bytes)
+            
+            log.info(f"[Bridge] Downloaded {len(data_bytes)} bytes to {destination}")
+            return True
+            
+        except Exception as e:
+            log.error(f"[Bridge] Download failed: {e}")
+            return False
 
+    def _sign(self, msg: str) -> str:
+        """
+        Sign message with API key for verification
+        
+        Args:
+            msg: Message to sign
+            
+        Returns:
+            SHA256 signature hex string
+        """
+        secret = self.api_key or "local"
+        signature = hashlib.sha256((secret + msg).encode()).hexdigest()
+        return signature
+
+
+# Global bridge instance
+bridge = CloudBridge()
