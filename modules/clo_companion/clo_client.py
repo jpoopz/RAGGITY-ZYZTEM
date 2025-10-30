@@ -64,13 +64,13 @@ class CLOClient:
     
     def connect(self, retries: Optional[int] = None) -> Dict[str, Any]:
         """
-        Test connection to CLO bridge listener.
+        Test connection to CLO bridge listener with exponential backoff.
         
         Args:
             retries: Number of connection retries (default: from config)
         
         Returns:
-            dict: {ok: bool, data: dict, error: str}
+            dict: {ok: bool, data: dict, error: str, help: str (on error)}
         """
         max_retries = retries if retries is not None else MAX_RETRIES
         
@@ -87,38 +87,119 @@ class CLOClient:
                             "host": self.host,
                             "port": self.port,
                             "message": "Connected to CLO bridge",
-                            "ping_response": result.get("data", {})
+                            "ping_response": result.get("data", {}),
+                            "attempts": attempt + 1
                         },
                         "error": None
                     }
                 else:
                     error = result.get("error", "Unknown error")
+                    
+                    # Check if it's a connection refused error
+                    if "Connection refused" in error or "refused" in error.lower():
+                        if attempt < max_retries - 1:
+                            # Exponential backoff: 1s, 2s, 4s
+                            delay = RETRY_DELAY * (2 ** attempt)
+                            time.sleep(delay)
+                            continue
+                        
+                        return {
+                            "ok": False,
+                            "data": None,
+                            "error": f"Cannot connect to CLO bridge on {self.host}:{self.port}",
+                            "help": self._get_connection_help()
+                        }
+                    
                     if attempt < max_retries - 1:
-                        time.sleep(RETRY_DELAY)
+                        delay = RETRY_DELAY * (2 ** attempt)
+                        time.sleep(delay)
                         continue
+                    
                     return {
                         "ok": False,
                         "data": None,
-                        "error": f"Connection test failed: {error}"
+                        "error": f"Connection test failed: {error}",
+                        "help": self._get_connection_help()
                     }
             
-            except Exception as e:
+            except ConnectionRefusedError:
                 if attempt < max_retries - 1:
-                    time.sleep(RETRY_DELAY)
+                    delay = RETRY_DELAY * (2 ** attempt)
+                    time.sleep(delay)
                     continue
                 
                 self.connected = False
                 return {
                     "ok": False,
                     "data": None,
-                    "error": f"Connection failed after {max_retries} attempts: {str(e)}"
+                    "error": f"Connection refused on {self.host}:{self.port}",
+                    "help": self._get_connection_help()
+                }
+            
+            except socket.timeout:
+                if attempt < max_retries - 1:
+                    delay = RETRY_DELAY * (2 ** attempt)
+                    time.sleep(delay)
+                    continue
+                
+                self.connected = False
+                return {
+                    "ok": False,
+                    "data": None,
+                    "error": f"Connection timeout after {self.timeout}s (tried {max_retries} times)",
+                    "help": "CLO may be slow to respond. Try increasing CLO_TIMEOUT."
+                }
+            
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    delay = RETRY_DELAY * (2 ** attempt)
+                    time.sleep(delay)
+                    continue
+                
+                self.connected = False
+                return {
+                    "ok": False,
+                    "data": None,
+                    "error": f"Connection failed: {str(e)}",
+                    "help": self._get_connection_help()
                 }
         
         return {
             "ok": False,
             "data": None,
-            "error": "Max retries exceeded"
+            "error": "Max retries exceeded",
+            "help": self._get_connection_help()
         }
+    
+    def _get_connection_help(self) -> str:
+        """
+        Get helpful error message for connection failures.
+        
+        Returns:
+            str: Multi-line help message
+        """
+        return f"""
+Troubleshooting Steps:
+
+1. Is CLO 3D running?
+   - Launch CLO 3D application
+
+2. Is the bridge listener started in CLO?
+   - In CLO: File > Script > Run Script...
+   - Select: modules/clo_companion/clo_bridge_listener.py
+   - Look for message: "CLO Bridge listening on {self.host}:{self.port}"
+
+3. Check firewall settings
+   - Ensure localhost connections are allowed
+   - Port {self.port} should not be blocked
+
+4. Verify port is not in use
+   - Try changing CLO_PORT environment variable
+   - Check if another application is using port {self.port}
+
+5. Check CLO's Python console for errors
+   - Look for error messages in the script output window
+"""
     
     def send(self, command: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -155,26 +236,18 @@ class CLOClient:
             # Connect
             sock.connect((self.host, self.port))
             
-            # Serialize and send command
-            command_json = json.dumps(command)
+            # Serialize and send command as newline-delimited JSON
+            command_json = json.dumps(command) + "\n"
             sock.sendall(command_json.encode('utf-8'))
             
-            # Receive response
+            # Receive response until newline (NDJSON protocol)
             response_data = b""
-            while True:
+            while b"\n" not in response_data:
                 chunk = sock.recv(4096)
                 if not chunk:
                     break
                 response_data += chunk
-                
-                # Try to parse - if valid JSON, we're done
-                try:
-                    response = json.loads(response_data.decode('utf-8'))
-                    break
-                except json.JSONDecodeError:
-                    # Incomplete JSON, keep receiving
-                    continue
-            
+
             if not response_data:
                 return {
                     "ok": False,
@@ -182,9 +255,10 @@ class CLOClient:
                     "error": "No response from CLO bridge"
                 }
             
-            # Parse response
+            # Split at first newline and parse JSON
+            line = response_data.split(b"\n", 1)[0]
             try:
-                response = json.loads(response_data.decode('utf-8'))
+                response = json.loads(line.decode('utf-8'))
             except json.JSONDecodeError as e:
                 return {
                     "ok": False,
@@ -437,4 +511,40 @@ def send_command(command: Dict[str, Any], host: Optional[str] = None,
     """
     client = CLOClient(host=host, port=port, timeout=timeout)
     return client.send(command)
+
+
+if __name__ == "__main__":
+    # Simple smoke test CLI for manual debugging
+    import argparse
+
+    parser = argparse.ArgumentParser(description="CLOClient smoke test")
+    parser.add_argument("--host", default=CLO_HOST, help="CLO bridge host")
+    parser.add_argument("--port", type=int, default=CLO_PORT, help="CLO bridge port")
+    parser.add_argument("--timeout", type=int, default=CLO_TIMEOUT, help="Timeout seconds")
+    parser.add_argument("--cmd", default="ping", help="Command name (default: ping)")
+    args, unknown = parser.parse_known_args()
+
+    client = CLOClient(host=args.host, port=args.port, timeout=args.timeout)
+    print(f"Connecting to {args.host}:{args.port} ...")
+    res = client.connect()
+    print("connect:", res)
+    if not res.get("ok"):
+        raise SystemExit(1)
+
+    # Build command
+    cmd = {"cmd": args.cmd}
+    # Allow extra key=value pairs
+    for kv in unknown:
+        if "=" in kv:
+            k, v = kv.split("=", 1)
+            # try to parse numbers/bools
+            if v.isdigit():
+                v = int(v)
+            elif v.lower() in ("true", "false"):
+                v = v.lower() == "true"
+            cmd[k.lstrip("-")] = v
+
+    print("sending:", cmd)
+    out = client.send(cmd)
+    print("response:", out)
 
