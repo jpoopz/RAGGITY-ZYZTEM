@@ -123,7 +123,8 @@ install_error_handlers(app)
 
 # Routers
 try:
-    from app.routes import clo
+    import importlib
+    clo = importlib.import_module("app.routes.clo")
     app.include_router(clo.router)
 except Exception as e:
     log.warning(f"CLO router not available: {e}")
