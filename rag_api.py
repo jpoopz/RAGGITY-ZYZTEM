@@ -308,6 +308,10 @@ async def ingest_file(background_tasks: BackgroundTasks, f: UploadFile = File(..
     # Schedule ingestion in background
     background_tasks.add_task(rag.ingest_path, dst)
     
+    try:
+        log.info(f"/ingest-file saved: {f.filename} -> {dst}")
+    except Exception:
+        pass
     return {"message": "ingest scheduled", "file": f.filename}
 
 
@@ -324,6 +328,10 @@ def ingest_path(request: IngestPathRequest):
     
     rag.ingest_path(path)
     
+    try:
+        log.info(f"/ingest-path: {path}")
+    except Exception:
+        pass
     return {"message": "ingested", "path": path}
 
 

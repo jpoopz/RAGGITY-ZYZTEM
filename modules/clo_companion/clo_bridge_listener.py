@@ -1,5 +1,5 @@
 """
-CLO Bridge Listener
+CLO Bridge Listener (with CLO-safe non-blocking API)
 
 TCP socket server that runs inside CLO 3D's Python environment.
 Receives commands from external RAGGITY client and executes them using CLO's API.
@@ -31,6 +31,8 @@ BUFFER_SIZE = 4096
 # Server state
 running = True
 request_count = 0
+_server = None  # non-blocking server socket (for CLO-safe mode)
+_clients = []   # accepted client sockets (non-blocking)
 
 
 def log(message, level="INFO"):
@@ -378,6 +380,122 @@ def handle_command(data):
             "traceback": traceback.format_exc()
         }
 
+
+# -------------------- CLO-safe non-blocking API --------------------
+def _nb_log(msg, level="INFO"):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{timestamp}] [{level}] {msg}")
+
+
+def start_listener(host: str = HOST, port: int = PORT):
+    """Start a non-blocking listener (safe inside CLO UI)."""
+    global _server, _clients, running
+    if _server is not None:
+        _nb_log("Listener already active")
+        return True
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((host, int(port)))
+        s.listen(8)
+        s.setblocking(False)
+        _server = s
+        _clients = []
+        running = True
+        _nb_log(f"CLO Bridge Listener (non-blocking) active on {host}:{port}")
+        _nb_log(f"Available commands: {', '.join(COMMANDS.keys())}")
+        return True
+    except Exception as e:
+        _server = None
+        _nb_log(f"Failed to start listener: {e}", "ERROR")
+        return False
+
+
+def stop_listener():
+    """Stop non-blocking listener and close sockets."""
+    global _server, _clients
+    try:
+        for c in _clients:
+            try:
+                c.close()
+            except Exception:
+                pass
+        _clients = []
+        if _server is not None:
+            try:
+                _server.close()
+            except Exception:
+                pass
+    finally:
+        _server = None
+        _nb_log("Listener stopped")
+
+
+def _accept_once():
+    if _server is None:
+        return
+    try:
+        conn, addr = _server.accept()
+        conn.setblocking(False)
+        _clients.append(conn)
+        _nb_log(f"Connection from {addr}")
+    except BlockingIOError:
+        pass
+    except Exception as e:
+        _nb_log(f"accept error: {e}", "WARN")
+
+
+def _read_once(conn: socket.socket) -> bool:
+    try:
+        data = conn.recv(BUFFER_SIZE)
+        if not data:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            if conn in _clients:
+                _clients.remove(conn)
+            _nb_log("Client disconnected")
+            return True
+
+        # Fast handshake path
+        if b'"ping":"clo"' in data:
+            try:
+                conn.sendall(b'{"pong":"clo"}\n')
+            except Exception:
+                pass
+            return True
+
+        text = data.decode("utf-8", "ignore").strip()
+        # Reuse existing blocking handler for command semantics
+        response = handle_command(text)
+        try:
+            conn.sendall((json.dumps(response) + "\n").encode("utf-8"))
+        except Exception:
+            pass
+        return True
+
+    except BlockingIOError:
+        return False
+    except Exception as e:
+        _nb_log(f"recv error: {e}", "WARN")
+        try:
+            conn.close()
+        except Exception:
+            pass
+        if conn in _clients:
+            _clients.remove(conn)
+        return True
+
+
+def tick_listener():
+    """Process at most one accept and one read without blocking the UI."""
+    if _server is None:
+        return
+    _accept_once()
+    for c in list(_clients):
+        if _read_once(c):
+            break
 
 def start_server():
     """Start TCP socket server and listen for commands"""

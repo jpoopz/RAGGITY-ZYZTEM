@@ -1041,6 +1041,28 @@ class IngestTab(ctk.CTkFrame):
             font=body()
         )
         self.path_entry.pack(padx=20, pady=10, fill="x")
+
+        # Optional drag-and-drop support (tkinterdnd2). Gracefully degrades.
+        try:
+            from tkinterdnd2 import DND_FILES
+            self.path_entry.drop_target_register(DND_FILES)  # type: ignore[attr-defined]
+            def _on_drop(event):
+                data = getattr(event, "data", "").strip()
+                if not data:
+                    return
+                # On Windows, paths may be quoted and space-separated
+                paths = [p.strip().strip('{').strip('}').strip('"') for p in data.split()]
+                if paths:
+                    self.path_entry.delete(0, "end")
+                    self.path_entry.insert(0, paths[0])
+                    self.log_progress(f"Dropped: {paths[0]}")
+            self.path_entry.dnd_bind("<<Drop>>", _on_drop)  # type: ignore[attr-defined]
+        except Exception:
+            # No tkinterdnd2; show a subtle hint in the log once
+            try:
+                self.log_progress("Drag-and-drop not available (tkinterdnd2 not installed). Use Browse…", is_error=False)
+            except Exception:
+                pass
         
         # Button row
         button_frame = ctk.CTkFrame(ingest_card, fg_color="transparent")
