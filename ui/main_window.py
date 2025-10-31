@@ -548,6 +548,7 @@ class Sidebar(ctk.CTkFrame):
         self.nav_items = [
             ("📊", "Dashboard"),
             ("💬", "RAG Chat"),
+            ("🎨", "Workshop"),
             ("📥", "Ingest"),
             ("👗", "CLO3D")
         ]
@@ -642,9 +643,11 @@ class ContentArea(ctk.CTkFrame):
         
         # Create all tabs
         from ui.rag_chat import RAGChat
+        from ui.tabs.workshop_tab import WorkshopTab
         self.tabs = {
             "Dashboard": DashboardTab(self, app),
             "RAG Chat": RAGChat(self, app),
+            "Workshop": WorkshopTab(self, app),
             "Ingest": IngestTab(self, app),
             "System": SystemTab(self, app),
             "Settings": SettingsTab(self, app),
@@ -693,10 +696,18 @@ class DashboardTab(ctk.CTkFrame):
         self._rag_badge.pack(anchor="w", padx=16)
         ctk.CTkButton(self._card_rag, text="Open RAG Chat", height=44, command=lambda: self.app.sidebar.select_tab("RAG Chat")).pack(padx=16, pady=14)
 
+        self._card_workshop = Card(grid)
+        self._card_workshop.pack(fill="x", padx=4, pady=8)
+        ctk.CTkLabel(self._card_workshop, text="Garment Workshop", font=subheading()).pack(anchor="w", padx=16, pady=(14,0))
+        ctk.CTkLabel(self._card_workshop, text="Design and export garments without CLO.", font=body(), text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2,10))
+        self._workshop_badge = ctk.CTkLabel(self._card_workshop, text="Status: Ready", font=small(), text_color=STATUS_OK)
+        self._workshop_badge.pack(anchor="w", padx=16)
+        ctk.CTkButton(self._card_workshop, text="Open Workshop", height=44, command=lambda: self.app.sidebar.select_tab("Workshop")).pack(padx=16, pady=14)
+
         self._card_clo = Card(grid)
         self._card_clo.pack(fill="x", padx=4, pady=8)
         ctk.CTkLabel(self._card_clo, text="CLO3D Tool", font=subheading()).pack(anchor="w", padx=16, pady=(14,0))
-        ctk.CTkLabel(self._card_clo, text="Control the CLO Bridge and run actions.", font=body(), text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2,10))
+        ctk.CTkLabel(self._card_clo, text="Advanced CLO integration (optional).", font=body(), text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2,10))
         self._clo_badge = ctk.CTkLabel(self._card_clo, text="Status: …", font=small(), text_color=TEXT_SECONDARY)
         self._clo_badge.pack(anchor="w", padx=16)
         ctk.CTkButton(self._card_clo, text="Open CLO3D Tool", height=44, command=self.app.open_clo_tool).pack(padx=16, pady=14)

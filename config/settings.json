@@ -1,0 +1,14 @@
+{
+  "clo_executable": "C:\\Program Files\\CLO\\CLO.exe",
+  "export_dir": "exports/garments",
+  "template_dir": "templates/garments",
+  "preview_dir": "exports/previews",
+  "auto_open_clo": false,
+  "default_fabric": "cotton",
+  "default_style": "tshirt",
+  "ui": {
+    "theme": "dark",
+    "accent_color": "#00D9FF"
+  }
+}
+

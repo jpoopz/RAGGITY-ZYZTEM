@@ -1,0 +1,55 @@
+{
+  "version": "7.0",
+  "project_name": "Shirt Base Template",
+  "garments": [
+    {
+      "name": "Shirt",
+      "type": "shirt",
+      "fabric": "cotton",
+      "style": "formal",
+      "patterns": [
+        {
+          "name": "Front_Left",
+          "points": []
+        },
+        {
+          "name": "Front_Right",
+          "points": []
+        },
+        {
+          "name": "Back",
+          "points": []
+        },
+        {
+          "name": "Sleeve_L",
+          "points": []
+        },
+        {
+          "name": "Sleeve_R",
+          "points": []
+        },
+        {
+          "name": "Collar",
+          "points": []
+        },
+        {
+          "name": "Cuff_L",
+          "points": []
+        },
+        {
+          "name": "Cuff_R",
+          "points": []
+        }
+      ],
+      "seams": [],
+      "created": "2025-10-31",
+      "note": "Base formal shirt template for RAGGITY ZYZTEM"
+    }
+  ],
+  "metadata": {
+    "generator": "RAGGITY ZYZTEM 2.0",
+    "template": "shirt_base.zprj",
+    "description": "Basic formal shirt template with collar and cuffs"
+  }
+}
+

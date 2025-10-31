@@ -1,0 +1,47 @@
+{
+  "version": "7.0",
+  "project_name": "Dress Base Template",
+  "garments": [
+    {
+      "name": "Dress",
+      "type": "dress",
+      "fabric": "silk",
+      "style": "formal",
+      "patterns": [
+        {
+          "name": "Bodice_Front",
+          "points": []
+        },
+        {
+          "name": "Bodice_Back",
+          "points": []
+        },
+        {
+          "name": "Skirt_Front",
+          "points": []
+        },
+        {
+          "name": "Skirt_Back",
+          "points": []
+        },
+        {
+          "name": "Strap_L",
+          "points": []
+        },
+        {
+          "name": "Strap_R",
+          "points": []
+        }
+      ],
+      "seams": [],
+      "created": "2025-10-31",
+      "note": "Base dress template for RAGGITY ZYZTEM"
+    }
+  ],
+  "metadata": {
+    "generator": "RAGGITY ZYZTEM 2.0",
+    "template": "dress_base.zprj",
+    "description": "Basic dress template with bodice and skirt"
+  }
+}
+

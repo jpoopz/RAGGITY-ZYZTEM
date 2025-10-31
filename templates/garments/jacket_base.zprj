@@ -1,0 +1,47 @@
+{
+  "version": "7.0",
+  "project_name": "Jacket Base Template",
+  "garments": [
+    {
+      "name": "Jacket",
+      "type": "jacket",
+      "fabric": "wool",
+      "style": "formal",
+      "patterns": [
+        {
+          "name": "Front_Left",
+          "points": []
+        },
+        {
+          "name": "Front_Right",
+          "points": []
+        },
+        {
+          "name": "Back",
+          "points": []
+        },
+        {
+          "name": "Sleeve_L",
+          "points": []
+        },
+        {
+          "name": "Sleeve_R",
+          "points": []
+        },
+        {
+          "name": "Collar",
+          "points": []
+        }
+      ],
+      "seams": [],
+      "created": "2025-10-31",
+      "note": "Base jacket template for RAGGITY ZYZTEM"
+    }
+  ],
+  "metadata": {
+    "generator": "RAGGITY ZYZTEM 2.0",
+    "template": "jacket_base.zprj",
+    "description": "Basic jacket template with collar and sleeves"
+  }
+}
+
