@@ -44,7 +44,7 @@ try:
     TROUBLESHOOTER_AVAILABLE = True
 except ImportError as e:
     TROUBLESHOOTER_AVAILABLE = False
-    print(f"Troubleshooter not available: {e}")
+    log.warning(f"Troubleshooter not available: {e}")
 
 # Import system monitor
 try:
@@ -52,7 +52,7 @@ try:
     SYSTEM_MONITOR_AVAILABLE = True
 except ImportError as e:
     SYSTEM_MONITOR_AVAILABLE = False
-    print(f"System monitor not available: {e}")
+    log.warning(f"System monitor not available: {e}")
 
 # Import cloud bridge for hybrid mode
 try:
@@ -60,7 +60,7 @@ try:
     BRIDGE_AVAILABLE = True
 except ImportError as e:
     BRIDGE_AVAILABLE = False
-    print(f"Cloud bridge not available: {e}")
+    log.warning(f"Cloud bridge not available: {e}")
 
 log = get_logger("rag_api")
 
