@@ -1,3 +1,25 @@
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from loguru import logger
+import uuid
+
+
+def install_error_handlers(app):
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        trace_id = str(uuid.uuid4())
+        logger.error(f"[{trace_id}] {type(exc).__name__}: {exc}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "internal_error",
+                "detail": "Something went wrong",
+                "trace_id": trace_id,
+            },
+        )
+
+    return app
+
 """
 Typed error hierarchy for RAGGITY ZYZTEM.
 
