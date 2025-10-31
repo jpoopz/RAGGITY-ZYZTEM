@@ -1,3 +1,34 @@
+### 🛰️ Hostinger VPS Deployment (with HTTPS)
+
+1. Clone and enter the project:
+
+```bash
+git clone https://github.com/jpoopz/RAGGITY-ZYZTEM.git
+cd RAGGITY-ZYZTEM
+```
+
+2. Update `Caddyfile` with your domain (or VPS IP for self-signed HTTPS).
+
+3. First deployment:
+
+```bash
+chmod +x deploy.sh
+./deploy.sh
+```
+
+4. Enable auto-start on reboot:
+
+```bash
+sudo cp rag-system.service /etc/systemd/system/
+sudo systemctl enable rag-system
+sudo systemctl start rag-system
+```
+
+5. Visit:
+
+- https://yourdomain.com/health
+- https://yourdomain.com/clo/health
+
 ### CLO 3D Bridge — Windows Firewall Note
 
 If the CLO Bridge listener isn't reachable (timeout/refused), Windows Defender Firewall may be blocking the port.
