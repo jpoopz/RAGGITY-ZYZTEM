@@ -29,6 +29,11 @@ from core.rag_engine import RAGEngine
 from core.paths import ensure_dirs, get_data_dir
 from core.config import CFG
 from logger import get_logger
+from core.settings_env import settings  # new
+
+# Guardrails for prod profile
+if settings.APP_ENV == "prod" and settings.DEBUG:
+    raise RuntimeError("Refusing to start: DEBUG=true in prod profile")
 
 # Academic API routes integrated directly below (simplified version)
 ACADEMIC_AVAILABLE = True
