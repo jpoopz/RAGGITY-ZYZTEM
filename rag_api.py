@@ -31,6 +31,7 @@ from core.schemas.health import HealthFull
 from core.paths import ensure_dirs, get_data_dir
 from core.config import CFG
 from logger import get_logger
+from loguru import logger as log
 from core.settings_env import settings  # new
 
 # Guardrails for prod profile

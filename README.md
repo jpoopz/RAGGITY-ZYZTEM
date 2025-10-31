@@ -13,6 +13,29 @@ Quick steps:
 ```bash
 curl -s "http://127.0.0.1:8000/clo/health?port=9933" | jq
 ```
+
+## Run via Docker
+
+```bash
+docker compose up --build
+```
+
+Then open: http://localhost:8000/docs
+
+Verify /clo/health inside the container:
+
+```bash
+# From your host
+curl -s http://localhost:8000/clo/health
+# Remote VPS test (replace if needed)
+curl -s "http://localhost:8000/clo/health?host=31.97.148.98&port=9933"
+```
+
+Expected:
+- Local → {"ok": false, "advice": "..."} if no local listener
+- Remote → {"ok": true} when the VPS port is listening
+
+Firewall Tip: If `/clo/health` returns false on Windows, allow inbound TCP 9933 to the CLO bridge executable.
 # RAGGITY ZYZTEM 2.0 🎯
 
 **Local-First RAG Engine with Premium UI and CLO 3D Integration**
