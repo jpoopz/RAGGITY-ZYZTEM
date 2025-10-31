@@ -26,6 +26,8 @@ import requests as _requests
 from core.io_safety import safe_reconfigure_streams
 safe_reconfigure_streams()
 from core.rag_engine import RAGEngine
+from core.errors import install_error_handlers
+from core.schemas.health import HealthFull
 from core.paths import ensure_dirs, get_data_dir
 from core.config import CFG
 from logger import get_logger
@@ -117,6 +119,7 @@ app.add_middleware(
 # Initialize
 ensure_dirs()
 rag = RAGEngine()
+install_error_handlers(app)
 
 
 class IngestPathRequest(BaseModel):
@@ -228,7 +231,7 @@ def _probe_ollama(model: str | None = None):
         return {"ok": False, "model_ok": False, "model": model or ""}
 
 
-@app.get("/health/full")
+@app.get("/health/full", response_model=HealthFull)
 def health_full():
     api_host = os.getenv("API_HOST", "127.0.0.1")
     api_port = int(os.getenv("API_PORT", "5000"))
