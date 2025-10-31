@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  rag-system:
+    build: .
+    container_name: rag_system_prod
+    restart: always
+    environment:
+      APP_ENV: prod
+      DEBUG: "false"
+      OLLAMA_HOST: "http://127.0.0.1:11434"
+      CLO_HOST: "127.0.0.1"
+      CLO_PORT: "9933"
+    volumes:
+      - ./data:/workspace/data
+      - ./logs:/workspace/logs
+    expose:
+      - "8000"
+    command: uvicorn rag_api:app --host 0.0.0.0 --port 8000 --workers 2
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy_reverse_proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - rag-system
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+
