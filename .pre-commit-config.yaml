@@ -30,3 +30,16 @@ repos:
       - id: check-json
       - id: check-toml
 
+  - repo: local
+    hooks:
+      - id: build-context-index
+        name: Build Context Index
+        entry: python scripts/context/summarize_repo.py
+        language: system
+        pass_filenames: false
+      - id: require-agent-memory-on-large-change
+        name: Require Agent Memory Update on Large Change
+        entry: python scripts/context/memory_check.py
+        language: system
+        pass_filenames: false
+

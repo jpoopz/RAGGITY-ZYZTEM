@@ -1,0 +1,12 @@
+# Cursor Working Rules
+- ALWAYS read, in this order, before planning any change:
+  1) docs/AGENT_MEMORY.md
+  2) docs/ARCHITECTURE.md
+  3) docs/COMPONENTS.md
+  4) docs/ADRs/* (if present)
+  5) docs/CONTEXT_INDEX.json
+- For any decision that affects design/architecture or >300 lines of changes:
+  - Append a 5–10 line entry to docs/AGENT_MEMORY.md (Decision/Why/Risks/Follow-ups).
+  - If structural, add an ADR in docs/ADRs/.
+- Never add secrets. Use .env.sample only.
+- Never re-add ignored paths (Logs/, .chromadb/, node_modules/, __pycache__/, Lib/, site-packages/).
