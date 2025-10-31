@@ -8,12 +8,16 @@ Backs up old files and merges values into new structure.
 from __future__ import annotations
 
 import os
+import sys
 import json
 import shutil
 from typing import Dict, Any, Tuple
 
 from .settings import load_settings, save_yaml, save_json
-from .logger import get_logger
+
+# Add parent directory to path to import logger
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logger import get_logger
 
 log = get_logger("settings_migrate")
 
@@ -246,4 +250,5 @@ def auto_migrate_on_startup(root: str) -> bool:
         return True
     
     return False
+
 

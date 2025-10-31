@@ -208,3 +208,4 @@ class Section(ctk.CTkFrame):
             text = self.header_btn.cget("text")
             self.header_btn.configure(text=text.replace("▶", "▼"))
 
+

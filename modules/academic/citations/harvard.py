@@ -296,3 +296,4 @@ def cite_from_dois(dois: List[str], polite_email: str) -> Dict[str, Any]:
 # Required for citeproc
 from citeproc import Citation, CitationItem
 
+

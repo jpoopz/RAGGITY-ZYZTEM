@@ -8,9 +8,13 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Force UTF-8 encoding
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
+# Force UTF-8 encoding (safe for GUI mode)
+# Import safety module
+_base_dir = os.path.dirname(os.path.abspath(__file__))
+if _base_dir not in sys.path:
+    sys.path.insert(0, _base_dir)
+from core.io_safety import safe_reconfigure_streams
+safe_reconfigure_streams()
 
 LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Logs")
 MAX_LOG_SIZE_MB = 5

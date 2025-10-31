@@ -184,6 +184,95 @@ class LLMConnector:
             return f"Error: {str(e)}"
 
 
+# ========== Ollama Connectivity Helpers ==========
+
+def ollama_ok(host: str | None = None, timeout: int = 2) -> bool:
+    """
+    Check if Ollama server is reachable.
+    
+    Args:
+        host: Ollama host URL (defaults to settings)
+        timeout: Request timeout in seconds
+        
+    Returns:
+        True if Ollama is reachable, False otherwise
+    """
+    try:
+        import requests
+        host = host or SETTINGS.ollama_host or "http://localhost:11434"
+        r = requests.get(f"{host}/api/tags", timeout=timeout)
+        return r.ok
+    except Exception:
+        return False
+
+
+def model_present(model: str | None = None, host: str | None = None, timeout: int = 2) -> bool:
+    """
+    Check if a specific model is installed in Ollama.
+    
+    Args:
+        model: Model name to check (defaults to settings.model_name)
+        host: Ollama host URL (defaults to settings)
+        timeout: Request timeout in seconds
+        
+    Returns:
+        True if model is present, False otherwise
+    """
+    try:
+        import requests
+        host = host or SETTINGS.ollama_host or "http://localhost:11434"
+        model = model or SETTINGS.model_name
+        
+        r = requests.get(f"{host}/api/tags", timeout=timeout)
+        if not r.ok:
+            return False
+        
+        # Parse response - handle different API response shapes
+        data = r.json()
+        models = data.get("models", [])
+        
+        # Extract model names (remove tags like :latest)
+        model_names = []
+        for m in models:
+            name = m.get("name", "") or m.get("model", "")
+            if name:
+                model_names.append(name.split(":")[0])
+        
+        # Check if target model is present (remove tag for comparison)
+        target = model.split(":")[0]
+        return target in model_names
+    except Exception:
+        return False
+
+
+def verify_ollama_setup(log_func=None) -> tuple[bool, str]:
+    """
+    Verify Ollama is running and configured model is available.
+    
+    Args:
+        log_func: Optional logging function to use
+        
+    Returns:
+        Tuple of (success: bool, message: str)
+    """
+    if log_func is None:
+        log_func = log.info
+    
+    # Check if Ollama is reachable
+    if not ollama_ok():
+        msg = f"Ollama server not reachable at {SETTINGS.ollama_host}. Please start Ollama service."
+        return False, msg
+    
+    # Check if model is installed
+    model = SETTINGS.model_name
+    if not model_present(model):
+        msg = f"Model '{model}' not found in Ollama. Run: ollama pull {model}"
+        return False, msg
+    
+    msg = f"Ollama is running with model '{model}' ✓"
+    return True, msg
+
+
 # Global LLM connector instance
 llm = LLMConnector()
 

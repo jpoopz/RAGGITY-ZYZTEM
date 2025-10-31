@@ -1,0 +1,82 @@
+{
+  "suite_version": "2.0.0",
+  "user_profile": {
+    "name": "Julian Poopat",
+    "obsidian_vault_path": "C:\\Users\\Julian Poopat\\Documents\\Obsidian",
+    "preferred_llm": "llama3.2",
+    "ollama_host": "http://localhost:11434"
+  },
+  "startup": {
+    "auto_start_modules": [
+      "academic_rag",
+      "system_monitor"
+    ],
+    "show_dashboard_on_start": true,
+    "minimize_to_tray": false
+  },
+  "logging": {
+    "level": "INFO",
+    "rotation_size_mb": 5,
+    "retention_days": 30,
+    "module_specific_logs": true
+  },
+  "monitoring": {
+    "health_check_interval_seconds": 30,
+    "resource_check_interval_seconds": 10,
+    "alert_on_module_crash": true
+  },
+  "security": {
+    "auth_token": "zTFSAX6xwQLM7C-p5ETFeSNGBobUomVEmJV28KZx4KE",
+    "bind_localhost_only": true,
+    "cors_enabled": false
+  },
+  "resources": {
+    "max_concurrent_workers": 4,
+    "prefer_gpu": false,
+    "max_ram_mb": 4096,
+    "default_model": "llama3.2"
+  },
+  "modules": {
+    "academic_rag": {
+      "enabled": true,
+      "auto_start": true,
+      "config_file": "academic_rag_config.json"
+    },
+    "clo_companion": {
+      "enabled": false,
+      "auto_start": false,
+      "config_file": "clo_companion_config.json"
+    },
+    "web_retriever": {
+      "enabled": true,
+      "auto_start": false,
+      "config_file": "web_retriever_config.json"
+    },
+    "automation_hub": {
+      "enabled": true,
+      "auto_start": false,
+      "config_file": "automation_hub_config.json"
+    },
+    "system_monitor": {
+      "enabled": true,
+      "auto_start": true,
+      "config_file": null
+    }
+  },
+  "inter_module": {
+    "enable_bus": true,
+    "message_queue_size": 100,
+    "event_logging": true
+  },
+  "gui": {
+    "theme": "light",
+    "window_width": 1200,
+    "window_height": 800,
+    "last_tab": "Dashboard"
+  },
+  "updates": {
+    "check_on_startup": true,
+    "check_interval_hours": 24,
+    "update_source": "local_git"
+  }
+}

@@ -7,9 +7,11 @@ import sys
 import os
 import time
 
-# Force UTF-8 encoding for console output (prevents UnicodeEncodeError)
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
+# Force UTF-8 encoding for console output (safe for GUI mode)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, BASE_DIR)
+from core.io_safety import safe_reconfigure_streams
+safe_reconfigure_streams()
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -54,6 +56,31 @@ def health():
         "uptime_seconds": uptime,
         "service": "Academic RAG API"
     })
+
+@app.route('/health/full', methods=['GET'])
+def health_full():
+    """Comprehensive system health endpoint for dashboard polling"""
+    try:
+        from modules.academic_rag.health_endpoint import get_full_health
+        return jsonify(get_full_health())
+    except Exception as e:
+        log.error(f"Health check failed: {e}")
+        return jsonify({
+            "error": str(e),
+            "error_type": e.__class__.__name__
+        }), 500
+
+@app.route('/health/clo', methods=['GET'])
+def health_clo():
+    """Lightweight CLO Bridge health check for UI polling"""
+    try:
+        from modules.academic_rag.health_endpoint import get_clo_health
+        return jsonify(get_clo_health())
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e)
+        }), 500
 
 @app.route('/query', methods=['POST'])
 def query():
@@ -546,10 +573,26 @@ if __name__ == '__main__':
     host = suite_config.get("security", {}).get("bind_localhost_only", True)
     host_addr = "127.0.0.1" if host else "0.0.0.0"
     
+    # Log Python version info
+    import platform
+    py_version = sys.version.split()[0]
+    log.info(f"Python {py_version} | {platform.system()} {platform.release()}")
+    
     try:
         log.info(f"🚀 Starting Academic RAG API server on {host_addr}:{port}")
     except UnicodeEncodeError:
         log.info(f"Starting Academic RAG API server on {host_addr}:{port}")
+    
+    # Verify Ollama connectivity
+    try:
+        from core.llm_connector import verify_ollama_setup
+        success, message = verify_ollama_setup(log.info)
+        if success:
+            log.info(message)
+        else:
+            log.warning(message)
+    except Exception as e:
+        log.warning(f"Could not verify Ollama setup: {e}")
     
     app.run(host=host_addr, port=port, debug=False)
 

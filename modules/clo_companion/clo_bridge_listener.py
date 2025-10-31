@@ -318,6 +318,11 @@ def handle_command(data):
     try:
         # Parse JSON
         request = json.loads(data)
+        
+        # Handle handshake format: {"ping": "clo"}
+        if "ping" in request and request.get("ping") == "clo":
+            return {"success": True, "pong": "clo", "service": "CLO Bridge Listener", "version": "2.0"}
+        
         cmd = request.get("cmd")
         
         if not cmd:
@@ -327,7 +332,8 @@ def handle_command(data):
         
         # Special commands
         if cmd == "ping":
-            return {"success": True, "message": "pong", "uptime_requests": request_count}
+            # Support both old format and new handshake format
+            return {"success": True, "message": "pong", "pong": "clo", "uptime_requests": request_count}
         
         if cmd == "shutdown":
             global running

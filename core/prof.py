@@ -11,8 +11,13 @@ Usage:
 """
 
 import time
+import sys
+import os
 from contextlib import contextmanager
-from .logger import get_logger
+
+# Add parent directory to path to import logger
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logger import get_logger
 
 log = get_logger("prof")
 

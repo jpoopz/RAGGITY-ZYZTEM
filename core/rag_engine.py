@@ -273,14 +273,22 @@ class RAGEngine:
         
         with span("load_and_chunk"):
             # Load and chunk texts
+            log.info(f"Ingest start: {path}")
+            raw_texts = self._load_texts(path)
+            log.info(f"Loaded {len(raw_texts)} raw document(s)")
+            
+            if not raw_texts:
+                raise RuntimeError(f"No documents loaded from {path}. Check file format and permissions.")
+            
             texts = []
-            for t in self._load_texts(path):
+            for t in raw_texts:
                 if t.strip():  # Skip empty texts
                     texts.extend(self._chunk(t))
+            
+            log.info(f"Chunked into {len(texts)} segment(s)")
         
         if not texts:
-            log.warning("No texts found to ingest.")
-            return
+            raise RuntimeError(f"No chunks produced from {path}. Documents may be empty or unreadable.")
         
         # Deduplicate chunks
         with span("deduplicate"):
@@ -336,12 +344,17 @@ class RAGEngine:
         
         # Persist to disk
         os.makedirs(self.store_dir, exist_ok=True)
-        faiss.write_index(self.index, os.path.join(self.store_dir, "faiss.index"))
+        index_path = os.path.join(self.store_dir, "faiss.index")
+        chunks_path = os.path.join(self.store_dir, "chunks.json")
         
-        with open(os.path.join(self.store_dir, "chunks.json"), "w", encoding="utf-8") as f:
+        faiss.write_index(self.index, index_path)
+        log.info(f"FAISS index saved to {index_path}")
+        
+        with open(chunks_path, "w", encoding="utf-8") as f:
             json.dump(self.index_map, f, ensure_ascii=False, indent=2)
+        log.info(f"Chunk map saved to {chunks_path}")
         
-        log.info(f"Ingested {len(texts)} chunks into FAISS. Total: {len(self.index_map)}")
+        log.info(f"Ingest complete: {len(texts)} new chunks added. Total index size: {len(self.index_map)} chunks")
         
         # Send telemetry event
         if BRIDGE_AVAILABLE:

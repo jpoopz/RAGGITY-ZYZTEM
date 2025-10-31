@@ -309,3 +309,4 @@ def test_work_model_properties():
     assert work_dict["citation_count"] == 150
     assert work_dict["is_highly_cited"] is True
 
+

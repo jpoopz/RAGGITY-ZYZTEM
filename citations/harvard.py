@@ -63,3 +63,4 @@ def inline_cite(authors: List[str], year: Optional[int]) -> str:
         return f"({last}, {year})" if year else f"({last}, n.d.)"
     return f"({last} et al., {year})" if year else f"({last} et al., n.d.)"
 
+
