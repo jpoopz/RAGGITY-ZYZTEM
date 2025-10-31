@@ -6,6 +6,8 @@ GUI application for managing the local RAG academic assistant and CLO Companion
 # Fix Tkinter Tcl/Tk paths before importing
 import os
 import sys
+from core.io_safety import safe_reconfigure_streams
+safe_reconfigure_streams()
 
 # Force UTF-8 encoding (safe for pythonw.exe)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
