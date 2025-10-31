@@ -49,56 +49,113 @@ FONT_WEIGHT_BOLD = "bold"
 FONT_WEIGHT_NORMAL = "normal"
 
 
-def heading() -> tuple:
+def heading(text_color=TEXT) -> dict:
     """
-    Returns font tuple for headings
+    Returns kwargs dict for heading labels
+    
+    Args:
+        text_color: Optional text color (defaults to TEXT)
     
     Returns:
-        Tuple of (family, size, weight)
+        Dict with font and text_color for **unpacking
     
     Example:
-        label = ctk.CTkLabel(parent, text="Title", font=heading())
+        label = ctk.CTkLabel(parent, text="Title", **heading())
     """
+    return {
+        "font": (FONT_FAMILY, FONT_SIZE_HEADING, FONT_WEIGHT_BOLD),
+        "text_color": text_color
+    }
+
+
+def subheading(text_color=TEXT) -> dict:
+    """
+    Returns kwargs dict for subheading labels
+    
+    Args:
+        text_color: Optional text color (defaults to TEXT)
+    
+    Returns:
+        Dict with font and text_color for **unpacking
+    """
+    return {
+        "font": (FONT_FAMILY, FONT_SIZE_SUBHEADING, FONT_WEIGHT_BOLD),
+        "text_color": text_color
+    }
+
+
+def body(text_color=TEXT) -> dict:
+    """
+    Returns kwargs dict for body text labels
+    
+    Args:
+        text_color: Optional text color (defaults to TEXT)
+    
+    Returns:
+        Dict with font and text_color for **unpacking
+    """
+    return {
+        "font": (FONT_FAMILY, FONT_SIZE_BODY),
+        "text_color": text_color
+    }
+
+
+def mono(text_color=TEXT) -> dict:
+    """
+    Returns kwargs dict for monospace text (code, logs)
+    
+    Args:
+        text_color: Optional text color (defaults to TEXT)
+    
+    Returns:
+        Dict with font and text_color for **unpacking
+    """
+    return {
+        "font": (FONT_FAMILY_MONO, FONT_SIZE_BODY),
+        "text_color": text_color
+    }
+
+
+def small(text_color=TEXT) -> dict:
+    """
+    Returns kwargs dict for small text labels
+    
+    Args:
+        text_color: Optional text color (defaults to TEXT)
+    
+    Returns:
+        Dict with font and text_color for **unpacking
+    """
+    return {
+        "font": (FONT_FAMILY, FONT_SIZE_SMALL),
+        "text_color": text_color
+    }
+
+
+# ========== Font-Only Helpers (for widgets with custom text_color) ==========
+
+def heading_font() -> tuple:
+    """Returns just the font tuple for headings (no text_color)"""
     return (FONT_FAMILY, FONT_SIZE_HEADING, FONT_WEIGHT_BOLD)
 
 
-def subheading() -> tuple:
-    """
-    Returns font tuple for subheadings
-    
-    Returns:
-        Tuple of (family, size, weight)
-    """
+def subheading_font() -> tuple:
+    """Returns just the font tuple for subheadings (no text_color)"""
     return (FONT_FAMILY, FONT_SIZE_SUBHEADING, FONT_WEIGHT_BOLD)
 
 
-def body() -> tuple:
-    """
-    Returns font tuple for body text
-    
-    Returns:
-        Tuple of (family, size)
-    """
+def body_font() -> tuple:
+    """Returns just the font tuple for body text (no text_color)"""
     return (FONT_FAMILY, FONT_SIZE_BODY)
 
 
-def mono() -> tuple:
-    """
-    Returns font tuple for monospace text (code, logs)
-    
-    Returns:
-        Tuple of (family, size)
-    """
+def mono_font() -> tuple:
+    """Returns just the font tuple for monospace text (no text_color)"""
     return (FONT_FAMILY_MONO, FONT_SIZE_BODY)
 
 
-def small() -> tuple:
-    """
-    Returns font tuple for small text
-    
-    Returns:
-        Tuple of (family, size)
-    """
+def small_font() -> tuple:
+    """Returns just the font tuple for small text (no text_color)"""
     return (FONT_FAMILY, FONT_SIZE_SMALL)
 
 
@@ -112,16 +169,21 @@ class Card(ctk.CTkFrame):
         - Subtle shadow-style background
         - Rounded corners
         - Proper spacing
+        - Optional title
     
     Example:
         card = Card(parent)
         card.pack(padx=20, pady=10, fill="both", expand=True)
         
-        label = ctk.CTkLabel(card, text="Content", font=body())
+        # With title
+        card = Card(parent, title="My Card")
+        
+        label = ctk.CTkLabel(card, text="Content", **body())
         label.pack(pady=10)
     """
     
-    def __init__(self, parent, **kwargs):
+    def __init__(self, parent, title=None, **kwargs):
+        # Extract title before passing to parent
         # Default card styling
         defaults = {
             "fg_color": CARD_BG,
@@ -134,6 +196,11 @@ class Card(ctk.CTkFrame):
         defaults.update(kwargs)
         
         super().__init__(parent, **defaults)
+        
+        # Add optional title
+        if title:
+            title_label = ctk.CTkLabel(self, text=title, **subheading())
+            title_label.pack(pady=(15, 10), padx=20, anchor="w")
 
 
 class StatusLabel(ctk.CTkLabel):
@@ -174,6 +241,26 @@ class StatusLabel(ctk.CTkLabel):
         
         if text:
             self.configure(text=text)
+    
+    def set_success(self, text: str):
+        """Convenience method for success status"""
+        self.set_status("success", text)
+    
+    def set_error(self, text: str):
+        """Convenience method for error status"""
+        self.set_status("error", text)
+    
+    def set_warning(self, text: str):
+        """Convenience method for warning status"""
+        self.set_status("warning", text)
+    
+    def set_warn(self, text: str):
+        """Alias for set_warning"""
+        self.set_warning(text)
+    
+    def set_info(self, text: str):
+        """Convenience method for info status"""
+        self.set_status("info", text)
 
 
 def apply_theme():
@@ -189,14 +276,18 @@ Example 1: Premium Card with Typography
     card = Card(parent)
     card.pack(padx=20, pady=10, fill="both")
     
-    title = ctk.CTkLabel(card, text="System Status", font=heading())
+    title = ctk.CTkLabel(card, text="System Status", **heading())
     title.pack(pady=10)
     
-    subtitle = ctk.CTkLabel(card, text="Live Metrics", font=subheading())
+    subtitle = ctk.CTkLabel(card, text="Live Metrics", **subheading())
     subtitle.pack(pady=5)
     
-    content = ctk.CTkLabel(card, text="CPU: 45.2%", font=body())
+    content = ctk.CTkLabel(card, text="CPU: 45.2%", **body())
     content.pack(pady=5)
+    
+    # With custom colors
+    warning_text = ctk.CTkLabel(card, text="Warning", **body(STATUS_WARN))
+    warning_text.pack(pady=5)
 
 Example 2: Status Indicators
 
@@ -212,8 +303,8 @@ Example 3: Color-coded Components
     btn = ctk.CTkButton(parent, text="Submit", fg_color=SUCCESS)
     
     # Warning label
-    label = ctk.CTkLabel(parent, text="Warning!", text_color=WARNING)
+    label = ctk.CTkLabel(parent, text="Warning!", **body(WARNING))
     
     # Error message
-    error = ctk.CTkLabel(parent, text="Failed!", text_color=ERROR)
+    error = ctk.CTkLabel(parent, text="Failed!", **body(ERROR))
 """

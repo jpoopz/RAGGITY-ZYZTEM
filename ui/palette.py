@@ -90,8 +90,7 @@ class CommandPalette(ctk.CTkToplevel):
         title_label = ctk.CTkLabel(
             self,
             text="⚡ Command Palette",
-            font=heading(),
-            text_color=ACCENT
+            **heading(ACCENT)
         )
         title_label.pack(pady=(20, 10))
         
@@ -100,7 +99,7 @@ class CommandPalette(ctk.CTkToplevel):
             self,
             placeholder_text="Type to search commands...",
             height=40,
-            font=body()
+            **body()
         )
         self.search_entry.pack(padx=20, pady=10, fill="x")
         self.search_entry.bind("<KeyRelease>", self.on_search)
@@ -109,8 +108,7 @@ class CommandPalette(ctk.CTkToplevel):
         hint = ctk.CTkLabel(
             self,
             text="↑↓ Navigate  •  Enter Execute  •  Esc Close",
-            font=small(),
-            text_color=TEXT_SECONDARY
+            **small(TEXT_SECONDARY)
         )
         hint.pack(pady=5)
         
@@ -156,8 +154,7 @@ class CommandPalette(ctk.CTkToplevel):
             no_results = ctk.CTkLabel(
                 self.commands_container,
                 text="No commands found",
-                font=body(),
-                text_color=TEXT_SECONDARY
+**body(TEXT_SECONDARY)
             )
             no_results.pack(pady=20)
             return
@@ -176,7 +173,7 @@ class CommandPalette(ctk.CTkToplevel):
                 category_header = ctk.CTkLabel(
                     self.commands_container,
                     text=category.upper(),
-                    font=small(),
+                    **small(),
                     text_color=TEXT_SECONDARY,
                     anchor="w"
                 )
@@ -202,7 +199,7 @@ class CommandPalette(ctk.CTkToplevel):
         name_label = ctk.CTkLabel(
             text_container,
             text=cmd['name'],
-            font=body(),
+            **body(),
             text_color="#000000" if is_selected else TEXT,
             anchor="w"
         )
@@ -215,7 +212,7 @@ class CommandPalette(ctk.CTkToplevel):
             desc_label = ctk.CTkLabel(
                 text_container,
                 text=description,
-                font=small(),
+                **small(),
                 text_color="#333333" if is_selected else TEXT_SECONDARY,
                 anchor="w"
             )
