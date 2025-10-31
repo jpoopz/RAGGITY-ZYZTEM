@@ -2168,6 +2168,13 @@ class CLO3DTab(ctk.CTkFrame):
         self.client = None
         self.connected = False
         
+        # State machine for periodic probing
+        self._clo_state = "idle"  # idle, probing, ok, down
+        self._probe_interval_ms = 5000  # 5 seconds
+        self._probe_active = False
+        self._hide_warning_session = False  # "Don't show again" flag
+        self._last_error = None  # For "Why?" explainer
+        
         # Import CLO client
         try:
             from modules.clo_companion.clo_client import CLOClient
@@ -2272,9 +2279,90 @@ Troubleshooting:
         )
         self.connect_btn.pack(side="left", padx=20)
         
+        # "How to connect" help link
+        help_link = ctk.CTkButton(
+            config_frame,
+            text="❓ How to connect",
+            command=self.toggle_help,
+            width=120,
+            height=32,
+            font=small(),
+            fg_color="transparent",
+            hover_color=CARD_BG,
+            border_width=1,
+            border_color=TEXT_SECONDARY
+        )
+        help_link.pack(side="left", padx=5)
+        
         # Status
         self.conn_status = StatusLabel(conn_card, status="info", text="Disconnected")
         self.conn_status.pack(pady=10)
+        
+        # Bridge warning frame (shown when listener not found)
+        self.bridge_warning_frame = ctk.CTkFrame(conn_card, fg_color="transparent")
+        self.bridge_warning_frame.pack_forget()  # Hidden by default
+        
+        warning_text_frame = ctk.CTkFrame(self.bridge_warning_frame, fg_color="transparent")
+        warning_text_frame.pack(side="left", fill="x", expand=True)
+        
+        self.bridge_warning = ctk.CTkLabel(
+            warning_text_frame,
+            text="⚠️ Listener not found. Open CLO → Script → Run Script… (see help)",
+            font=small(),
+            text_color=STATUS_WARNING,
+            wraplength=400
+        )
+        self.bridge_warning.pack(side="left", padx=5)
+        
+        # Warning action buttons
+        warning_buttons = ctk.CTkFrame(self.bridge_warning_frame, fg_color="transparent")
+        warning_buttons.pack(side="right", padx=5)
+        
+        # "Why?" explainer button
+        self.why_btn = ctk.CTkButton(
+            warning_buttons,
+            text="Why?",
+            command=self.show_error_details,
+            width=50,
+            height=24,
+            font=small(),
+            fg_color="transparent",
+            hover_color=CARD_BG,
+            border_width=1,
+            border_color=STATUS_WARNING
+        )
+        self.why_btn.pack(side="left", padx=2)
+        
+        # "Retry now" button
+        self.retry_btn = ctk.CTkButton(
+            warning_buttons,
+            text="Retry",
+            command=self.retry_bridge_check,
+            width=60,
+            height=24,
+            font=small(),
+            fg_color=ACCENT,
+            hover_color=STATUS_OK
+        )
+        self.retry_btn.pack(side="left", padx=2)
+        
+        # "Don't show again" button
+        self.hide_btn = ctk.CTkButton(
+            warning_buttons,
+            text="Hide",
+            command=self.hide_warning_session,
+            width=50,
+            height=24,
+            font=small(),
+            fg_color="transparent",
+            hover_color=CARD_BG,
+            border_width=1,
+            border_color=TEXT_SECONDARY
+        )
+        self.hide_btn.pack(side="left", padx=2)
+        
+        # Start periodic probe
+        self.after(500, self.start_periodic_probe)
         
         # Actions panel
         actions_card = Card(self)
@@ -2371,6 +2459,103 @@ Troubleshooting:
         self.output.insert("end", f"[{timestamp}] {prefix} {message}\n")
         self.output.see("end")
 
+    def start_periodic_probe(self):
+        """Start periodic CLO bridge probing with jitter"""
+        if not self._probe_active:
+            self._probe_active = True
+            self._probe_clo_async()
+    
+    def _probe_clo_async(self):
+        """Async probe with state machine and coalesced updates"""
+        import threading
+        import random
+        
+        if self._clo_state == "probing":
+            return  # Already probing
+        
+        self._clo_state = "probing"
+        
+        def run():
+            ok = False
+            error_detail = None
+            
+            try:
+                import requests
+                # Hit the lightweight /health/clo endpoint
+                r = requests.get("http://127.0.0.1:5000/health/clo", timeout=1.2)
+                if r.ok:
+                    data = r.json()
+                    ok = data.get("ok", False)
+                    if not ok:
+                        error_detail = data.get("error", "Unknown error")
+            except Exception as e:
+                ok = False
+                error_detail = f"{e.__class__.__name__}: {str(e)}"
+            
+            new_state = "ok" if ok else "down"
+            
+            def apply():
+                old_state = self._clo_state
+                self._clo_state = new_state
+                self._last_error = error_detail
+                
+                # Only update UI if state changed (debounce churn)
+                if old_state != new_state:
+                    self._render_bridge_banner()
+                
+                # Schedule next probe with jitter
+                jitter = random.randint(0, 500)
+                self.after(self._probe_interval_ms + jitter, self._probe_clo_async)
+            
+            self.after(0, apply)
+        
+        threading.Thread(target=run, daemon=True).start()
+    
+    def _render_bridge_banner(self):
+        """Render warning banner based on current state"""
+        if self._clo_state == "down" and not self._hide_warning_session and not self.connected:
+            # Show warning
+            self.bridge_warning_frame.pack(pady=5, fill="x")
+        elif self._clo_state == "ok":
+            # Hide warning when bridge is up
+            self.bridge_warning_frame.pack_forget()
+        # Note: "probing" state doesn't change banner
+    
+    def check_bridge_status(self):
+        """Legacy method - now uses periodic probe"""
+        # Trigger immediate probe
+        self.retry_bridge_check()
+    
+    def retry_bridge_check(self):
+        """Manual retry - force immediate probe"""
+        self._clo_state = "idle"  # Reset to allow new probe
+        self._probe_clo_async()
+        self.app.toast.show("Checking CLO Bridge...", "info")
+    
+    def show_error_details(self):
+        """Show modal with last probe error details"""
+        from tkinter import messagebox
+        
+        if self._last_error:
+            error_msg = f"CLO Bridge Check Failed\n\n"
+            error_msg += f"Error Details:\n{self._last_error}\n\n"
+            error_msg += f"Troubleshooting Steps:\n"
+            error_msg += f"1. Verify CLO 3D is running\n"
+            error_msg += f"2. In CLO: Script → Run Script…\n"
+            error_msg += f"3. Select: modules\\clo_companion\\clo_bridge_listener.py\n"
+            error_msg += f"4. Check firewall settings (allow port {self.default_port})\n"
+            error_msg += f"5. Test: PowerShell > Test-NetConnection 127.0.0.1 -Port {self.default_port}"
+            
+            messagebox.showinfo("Why is CLO Bridge not reachable?", error_msg)
+        else:
+            messagebox.showinfo("CLO Bridge Status", "No error details available.\n\nTry clicking 'Retry' to test connection.")
+    
+    def hide_warning_session(self):
+        """Hide warning for this session (until app restart)"""
+        self._hide_warning_session = True
+        self.bridge_warning_frame.pack_forget()
+        self.app.toast.show("CLO warning hidden for this session", "info")
+    
     def toggle_help(self):
         """Toggle help instructions visibility"""
         if self.help_visible:
@@ -2438,6 +2623,10 @@ Troubleshooting:
                         self.log_output(msg)
                         log(f"UI: {msg}", "UI")
                         
+                        # Hide bridge warning on successful connection
+                        self.bridge_warning_frame.pack_forget()
+                        self._clo_state = "ok"  # Update state
+                        
                         # Auto-hide help on successful connection
                         if self.help_visible:
                             self.toggle_help()
@@ -2495,6 +2684,10 @@ Troubleshooting:
         self.screenshot_btn.configure(state="disabled")
         
         self.log_output("Disconnected from CLO bridge")
+        
+        # Reset state and re-check after disconnect
+        self._clo_state = "idle"
+        self.retry_bridge_check()
 
     def import_garment(self):
         """Import garment file into CLO"""

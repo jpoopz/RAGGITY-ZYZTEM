@@ -8,12 +8,16 @@ for monitoring system performance and usage.
 import json
 import time
 import os
+import sys
 from typing import Any, Dict
 from collections import defaultdict
 import threading
 
 from .config import CFG
-from .logger import get_logger
+
+# Add parent directory to path to import logger
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logger import get_logger
 
 log = get_logger("telemetry")
 

@@ -44,3 +44,4 @@ def rrf_fuse(bm: List[Tuple[int,float]], de: List[Tuple[int,float]], k: int = 60
     fused = sorted(rankmap.items(), key=lambda x: x[1], reverse=True)[:top_k]
     return fused  # [(doc_index, fused_score)]
 
+

@@ -1,19 +1,29 @@
+# Python Version: 3.11+ recommended (tested on 3.11, 3.12, 3.14)
+# Note: Python 3.14 is currently alpha/beta. For production use, Python 3.11 or 3.12 is recommended.
+
 # === Core Dependencies ===
 requests>=2.31.0
 pyyaml>=6.0.1
 psutil>=5.9.0
 numpy>=1.24.0
+packaging>=23.0  # For version comparison in diagnostics
 
-# === FastAPI & Web Server ===
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-python-multipart>=0.0.6
+# === API Backend (Flask primary, FastAPI optional) ===
+# Flask is used by modules/academic_rag/api.py (primary API server)
 flask>=3.0.0
 flask-cors>=4.0.0
 
-# === Vector Stores (choose one or both) ===
+# Optional: FastAPI alternative (not currently used)
+# fastapi>=0.104.0
+# uvicorn[standard]>=0.24.0
+# python-multipart>=0.0.6
+
+# === Vector Stores ===
+# FAISS is the default vector store (no C++ compiler needed on Windows)
 faiss-cpu>=1.7.4
-chromadb>=0.4.22
+
+# Optional: ChromaDB alternative (requires C++ compiler to build on Windows)
+# chromadb>=0.4.22
 
 # === Document Processing ===
 pypdf>=3.0.0

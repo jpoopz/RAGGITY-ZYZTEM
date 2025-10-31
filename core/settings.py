@@ -16,6 +16,7 @@ Security:
 from __future__ import annotations
 
 import os
+import sys
 import json
 from typing import Any, Dict
 from pathlib import Path
@@ -23,7 +24,10 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from .settings_schema import Settings
-from .logger import get_logger
+
+# Add parent directory to path to import logger
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logger import get_logger
 
 log = get_logger("settings")
 
@@ -108,12 +112,15 @@ def _env_overrides() -> Dict[str, Any]:
         m["provider"] = prov
     
     # Generation settings
-    temp = os.getenv("TEMP") or os.getenv("LLM_TEMPERATURE")
+    # Use MODEL_TEMPERATURE or LLM_TEMPERATURE (NOT "TEMP" which is Windows OS temp folder)
+    temp = os.getenv("MODEL_TEMPERATURE") or os.getenv("LLM_TEMPERATURE")
     if temp:
         try:
             m["temperature"] = float(temp)
         except ValueError:
-            log.warning(f"Invalid temperature value: {temp}")
+            # Only warn if it looks like an intentional override (not a path)
+            if not os.path.isdir(temp):
+                log.warning(f"Invalid temperature value: {temp}")
     
     max_tokens = os.getenv("LLM_MAX_TOKENS")
     if max_tokens:

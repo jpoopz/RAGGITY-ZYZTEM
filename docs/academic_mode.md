@@ -712,3 +712,4 @@ Academic Mode is under active development. Contributions welcome:
 
 **Built for researchers, by researchers. Happy citing! 📚✨**
 
+

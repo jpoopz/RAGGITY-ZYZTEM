@@ -7,9 +7,10 @@ GUI application for managing the local RAG academic assistant and CLO Companion
 import os
 import sys
 
-# Force UTF-8 encoding
-sys.stdout.reconfigure(encoding='utf-8')
-sys.stderr.reconfigure(encoding='utf-8')
+# Force UTF-8 encoding (safe for pythonw.exe)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from core.io_safety import safe_reconfigure_streams
+safe_reconfigure_streams()
 
 # Auto-detect and set Tcl/Tk library paths
 def setup_tkinter_paths():
@@ -110,7 +111,10 @@ class RAGControlPanel:
         # Initial status check
         self.root.after(1000, self.update_all_status)
         
-        self.log("Control Panel started")
+        # Log system information
+        import platform
+        py_version = sys.version.split()[0]
+        self.log(f"Control Panel started | Python {py_version} on {platform.system()} {platform.release()}")
         
         # Show first-launch walkthrough
         is_first_launch = not os.path.exists(self.first_launch_file)
@@ -127,6 +131,33 @@ class RAGControlPanel:
         
         # Graceful shutdown flag
         self.shutting_down = False
+    
+    def load_api_endpoint(self):
+        """Load API host and port from config, with fallback to defaults"""
+        import json
+        cfg_path = os.path.join(os.path.dirname(__file__), "config", "academic_rag_config.json")
+        host, port = "127.0.0.1", 5000  # defaults
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                api_config = config.get("api", {})
+                host = api_config.get("host", host)
+                port = int(api_config.get("port", port))
+        except Exception as e:
+            self.log(f"Could not load API config, using defaults: {e}", "WARNING")
+        return host, port
+    
+    def check_api_health(self, host=None, port=None, timeout=2):
+        """Check if API is healthy by hitting /health endpoint"""
+        if host is None or port is None:
+            host, port = self.load_api_endpoint()
+        try:
+            import requests
+            url = f"http://{host}:{port}/health"
+            r = requests.get(url, timeout=timeout)
+            return r.ok and r.status_code == 200
+        except Exception:
+            return False
     
     def setup_ui(self):
         """Setup the user interface"""
@@ -1287,23 +1318,23 @@ class RAGControlPanel:
             gpu = get_gpu_status()
             
             if not gpu["available"]:
-                status_msg = "GPU: Not detected"
-                print(f"[GPU] {status_msg}")
-                self.log(status_msg, "GPU")
-                if hasattr(self, 'gpu_status_label'):
-                    self.gpu_status_label.config(text=status_msg, foreground="gray")
-                return
-            
+                    status_msg = "GPU: Not detected"
+                    print(f"[GPU] {status_msg}")
+                    self.log(status_msg, "GPU")
+                    if hasattr(self, 'gpu_status_label'):
+                        self.gpu_status_label.config(text=status_msg, foreground="gray")
+                    return
+                
             # GPU is available - format status
             name = gpu.get("name", "Unknown")
             mem_used_mb = gpu.get("memory_used", 0)
             mem_total_mb = gpu.get("memory_total", 0)
             mem_percent = gpu.get("memory_percent", 0)
             util = gpu.get("utilization", 0)
-            
+                
             mem_used_gb = mem_used_mb / 1024
             mem_total_gb = mem_total_mb / 1024
-            
+                
             status_msg = f"GPU: {name} | {mem_used_gb:.1f}/{mem_total_gb:.1f}GB ({mem_percent:.0f}%) | Util: {util:.0f}%"
             print(f"[GPU] {status_msg}")
             self.log(status_msg, "GPU")
@@ -1378,15 +1409,25 @@ class RAGControlPanel:
             
             self.log(f"API process started (PID: {self.api_process.pid})")
             
-            # Wait and verify startup (with delay)
-            time.sleep(3)
-            if self.check_port("127.0.0.1", 5000):
-                self.log("API server started successfully")
-                self.status_bar.config(text="API server running on port 5000")
-                self.add_status_message("✅ API server started")
+            # Wait and verify startup (Flask can take 4-5 seconds to initialize)
+            host, port = self.load_api_endpoint()
+            time.sleep(2)
+            
+            # Try health check with retries
+            max_retries = 3
+            for attempt in range(max_retries):
+                if self.check_api_health(host, port):
+                    self.log(f"API server started successfully on {host}:{port}")
+                    self.status_bar.config(text=f"API server running on port {port}")
+                    self.add_status_message("✅ API server started")
+                    break
+                elif attempt < max_retries - 1:
+                    self.log(f"Health check attempt {attempt + 1} failed, retrying...")
+                    time.sleep(2)  # Wait 2 more seconds before retry
             else:
-                self.log("API process started but not responding", "WARNING")
-                self.status_bar.config(text="API server starting (check logs)")
+                # After all retries failed
+                self.log(f"API process started but health check failed on {host}:{port}", "WARNING")
+                self.status_bar.config(text=f"API server starting on port {port} (check logs)")
         except Exception as e:
             self.log(f"Failed to start API: {e}", "ERROR")
             messagebox.showerror("Error", f"Failed to start API server: {e}")
