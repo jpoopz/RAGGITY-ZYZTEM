@@ -121,12 +121,25 @@ ensure_dirs()
 rag = RAGEngine()
 install_error_handlers(app)
 
-# Routers
+# --- CLO ROUTER MOUNT FIX ---
+import sys, os, importlib
+from loguru import logger
+
+# Ensure the project root is importable
+root_path = os.path.dirname(os.path.abspath(__file__))
+if root_path not in sys.path:
+    sys.path.insert(0, root_path)
+
 try:
-    from app.routes.clo import router as clo_router
-    app.include_router(clo_router)
+    clo_module = importlib.import_module("app.routes.clo")
+    if hasattr(clo_module, "router"):
+        app.include_router(clo_module.router, prefix="", tags=["CLO"])
+        logger.info("[rag_api] CLO router mounted successfully.")
+    else:
+        logger.warning("[rag_api] CLO router found but missing `router` object.")
 except Exception as e:
-    log.warning(f"CLO router not available: {e}")
+    logger.warning(f"[rag_api] Skipping CLO router: {e}")
+# --- END FIX ---
 
 
 class IngestPathRequest(BaseModel):

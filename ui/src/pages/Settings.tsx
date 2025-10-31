@@ -13,9 +13,13 @@ export default function Settings() {
       const url = `http://127.0.0.1:8000/clo/health?host=${encodeURIComponent(host)}&port=${encodeURIComponent(port)}`;
       const res = await fetch(url);
       const j = await res.json();
-      setStatus(j.ok ? `✅ ${j.advice || 'OK'}` : `❌ ${j.advice || 'Error'}`);
+      if (j.ok) {
+        setStatus('✅ Bridge reachable');
+      } else {
+        setStatus('❌ Bridge timeout');
+      }
     } catch (e: any) {
-      setStatus(`❌ ${e?.message || 'Request failed'}`);
+      setStatus('❌ Bridge timeout');
     } finally {
       setLoading(false);
     }

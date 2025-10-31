@@ -13,7 +13,6 @@ Quick steps:
 ```bash
 curl -s "http://127.0.0.1:8000/clo/health?port=9933" | jq
 ```
-
 # RAGGITY ZYZTEM 2.0 🎯
 
 **Local-First RAG Engine with Premium UI and CLO 3D Integration**
