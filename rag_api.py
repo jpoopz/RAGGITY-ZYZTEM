@@ -211,8 +211,6 @@ def health_clo():
     h, p = _read_clo_endpoint()
     ok, detail = _probe_clo_tcp(h, p)
     return JSONResponse({"ok": bool(ok), "handshake": detail, "host": h, "port": p})
-    except Exception:
-        return False, "timeout"
 
 
 def _probe_ollama(model: str | None = None):
