@@ -3,9 +3,8 @@ from fastapi.responses import JSONResponse
 import asyncio
 import os
 
-
-router = APIRouter()
-
+# Attach the prefix here so routes appear under /clo/*
+router = APIRouter(prefix="/clo", tags=["CLO"])
 
 async def _probe_async(host: str, port: int, timeout_s: float = 0.5) -> bool:
     try:
@@ -14,8 +13,7 @@ async def _probe_async(host: str, port: int, timeout_s: float = 0.5) -> bool:
     except Exception:
         return False
 
-
-@router.get("/clo/health")
+@router.get("/health")
 async def clo_health(host: str = Query("127.0.0.1"), port: int | None = Query(None)):
     if port is None:
         try:
@@ -27,6 +25,4 @@ async def clo_health(host: str = Query("127.0.0.1"), port: int | None = Query(No
     if ok:
         return JSONResponse({"ok": True})
     return JSONResponse({"ok": False, "advice": "Port unreachable or blocked"})
-
-
 
