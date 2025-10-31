@@ -121,6 +121,13 @@ ensure_dirs()
 rag = RAGEngine()
 install_error_handlers(app)
 
+# Routers
+try:
+    from app.routes import clo
+    app.include_router(clo.router)
+except Exception as e:
+    log.warning(f"CLO router not available: {e}")
+
 
 class IngestPathRequest(BaseModel):
     """Request model for path ingestion"""

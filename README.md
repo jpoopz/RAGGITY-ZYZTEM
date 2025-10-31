@@ -1,3 +1,4 @@
+Firewall Tip: If `/clo/health` returns false on Windows, allow inbound TCP 9933 to the CLO bridge executable.
 # RAGGITY ZYZTEM 2.0 🎯
 
 **Local-First RAG Engine with Premium UI and CLO 3D Integration**
