@@ -405,13 +405,23 @@ def start_server():
                 
                 try:
                     # Receive data
-                    data = client_socket.recv(BUFFER_SIZE).decode('utf-8')
+                    raw = client_socket.recv(BUFFER_SIZE)
+                    data = raw.decode('utf-8')
                     
                     if not data:
                         log("Empty request received", "WARN")
                         continue
                     
                     log(f"Request: {data[:200]}...", "DEBUG")
+
+                    # Immediate pong for handshake probes
+                    if b'"ping":"clo"' in raw:
+                        try:
+                            client_socket.sendall(b'{"pong":"clo"}\n')
+                        except Exception:
+                            pass
+                        # Continue loop; do not process further for this request
+                        continue
                     
                     # Handle command
                     response = handle_command(data)

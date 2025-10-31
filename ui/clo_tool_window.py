@@ -124,25 +124,28 @@ class CLOToolWindow(ctk.CTkToplevel):
         bg, fg = colors.get(state, ("#374151", "#e5e7eb"))
         self.banner.configure(text=text, fg_color=bg, text_color=fg)
 
-    def _probe_http(self, host: str, port: int):
+    def _probe_http_api(self, api_host: str, api_port: int):
         try:
-            r = requests.get(f"http://127.0.0.1:5000/health/clo", timeout=0.6)
-            if r.status_code == 200 and r.json().get("ok") is True:
-                return True, "ok"
-            return False, "wrong_service"
+            r = requests.get(f"http://{api_host}:{api_port}/health/clo", timeout=0.8)
+            if not r.ok:
+                return False, "api_unreachable"
+            j = r.json()
+            return bool(j.get("ok")), j.get("handshake", "unknown")
         except Exception:
-            return False, "timeout"
+            return False, "api_error"
 
     def _probe(self):
-        host = self.host_var.get().strip() or "127.0.0.1"
+        api_host, api_port = self._get_api_endpoint()
+        clo_host = self.host_var.get().strip() or "127.0.0.1"
         try:
-            port = int(self.port_var.get().strip() or "51235")
+            clo_port = int(self.port_var.get().strip() or "51235")
         except Exception:
-            port = 51235
-        ok, hs = self._probe_http(host, port)
-        if not ok:
-            ok, hs = _tcp_probe(host, port)
-        return ok, hs
+            clo_port = 51235
+        ok_api, hs_api = self._probe_http_api(api_host, api_port)
+        if ok_api:
+            return True, f"api:{hs_api}"
+        ok_tcp, hs_tcp = _tcp_probe(clo_host, clo_port)
+        return ok_tcp, f"tcp:{hs_tcp}"
 
     def _schedule_probe(self):
         if self._stop:
@@ -151,12 +154,16 @@ class CLOToolWindow(ctk.CTkToplevel):
         interval_ms = random.randint(5000, 7000) + jitter_ms
         def run():
             ok, hs = self._probe()
+            clo_host, clo_port = self.host_var.get(), self.port_var.get()
             if ok:
-                self._set_banner("ok", f"CLO Bridge connected ✓ {self.host_var.get()}:{self.port_var.get()}")
+                if hs.startswith("api:"):
+                    self._set_banner("ok", f"CLO Bridge connected ✓ API✓ {hs.split(':',1)[1]} @ {clo_host}:{clo_port}")
+                else:
+                    self._set_banner("ok", f"CLO Bridge connected ✓ {hs} @ {clo_host}:{clo_port}")
             else:
-                if hs == "timeout":
+                if hs.endswith("timeout"):
                     self._set_banner("down", "Listener not found — in CLO: Script → Run Script… → modules\\clo_companion\\clo_bridge_listener.py")
-                elif hs == "wrong_service":
+                elif hs.endswith("wrong_service"):
                     self._set_banner("down", "Port in use by another service — adjust port in config")
             if not self._stop:
                 self.after(interval_ms, self._schedule_probe)
@@ -167,11 +174,26 @@ class CLOToolWindow(ctk.CTkToplevel):
         self._set_banner("probing", "Probing now…")
         def run():
             ok, hs = self._probe()
+            clo_host, clo_port = self.host_var.get(), self.port_var.get()
             if ok:
-                self._set_banner("ok", f"CLO Bridge connected ✓ {self.host_var.get()}:{self.port_var.get()}")
+                if hs.startswith("api:"):
+                    self._set_banner("ok", f"CLO Bridge connected ✓ API✓ {hs.split(':',1)[1]} @ {clo_host}:{clo_port}")
+                else:
+                    self._set_banner("ok", f"CLO Bridge connected ✓ {hs} @ {clo_host}:{clo_port}")
             else:
                 self._set_banner("down", "Listener not found — in CLO: Script → Run Script… → modules\\clo_companion\\clo_bridge_listener.py")
         threading.Thread(target=run, daemon=True).start()
+
+    def _get_api_endpoint(self):
+        host, port = "127.0.0.1", 8000
+        try:
+            with open(os.path.join("config", "academic_rag_config.json"), "r", encoding="utf-8") as f:
+                j = json.load(f)
+                host = j.get("host", host)
+                port = int(j.get("port", port))
+        except Exception:
+            pass
+        return host, port
 
     def _connect(self):
         # Persist host/port

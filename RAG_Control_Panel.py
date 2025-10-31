@@ -11,8 +11,6 @@ safe_reconfigure_streams()
 
 # Force UTF-8 encoding (safe for pythonw.exe)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core.io_safety import safe_reconfigure_streams
-safe_reconfigure_streams()
 
 # Auto-detect and set Tcl/Tk library paths
 def setup_tkinter_paths():

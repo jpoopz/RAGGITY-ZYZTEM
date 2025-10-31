@@ -690,7 +690,7 @@ class DashboardTab(ctk.CTkFrame):
         ctk.CTkLabel(self._card_rag, text="Ask your knowledge base with sources.", font=body(), text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2,10))
         self._rag_badge = ctk.CTkLabel(self._card_rag, text="Status: …", font=small(), text_color=TEXT_SECONDARY)
         self._rag_badge.pack(anchor="w", padx=16)
-        ctk.CTkButton(self._card_rag, text="Open RAG Chat", height=44, command=lambda: self.app.sidebar.select_tab("Query")).pack(padx=16, pady=14)
+        ctk.CTkButton(self._card_rag, text="Open RAG Chat", height=44, command=lambda: self.app.sidebar.select_tab("RAG Chat")).pack(padx=16, pady=14)
 
         self._card_clo = Card(grid)
         self._card_clo.pack(fill="x", padx=4, pady=8)

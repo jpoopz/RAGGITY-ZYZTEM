@@ -148,6 +148,51 @@ def _probe_clo(host: str = "127.0.0.1", port: int = 51235, timeout: float = 0.6)
             return False, "wrong_service"
     except socket.timeout:
         return False, "timeout"
+
+
+def _read_clo_endpoint():
+    """Read CLO endpoint from config or environment."""
+    host, port = "127.0.0.1", 51235
+    try:
+        with open(os.path.join("config", "academic_rag_config.json"), "r", encoding="utf-8") as f:
+            j = json.load(f)
+            host = j.get("clo_host", j.get("CLO_HOST", host)) or host
+            try:
+                port = int(j.get("clo_port", j.get("CLO_PORT", port)) or port)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    host = os.getenv("CLO_HOST", host)
+    try:
+        port = int(os.getenv("CLO_PORT", str(port)))
+    except Exception:
+        pass
+    return host, port
+
+
+def _probe_clo_tcp(host: str, port: int):
+    """Server-side TCP probe with optional pong handshake."""
+    try:
+        with socket.create_connection((host, int(port)), timeout=0.8) as s:
+            try:
+                s.sendall((json.dumps({"ping": "clo"}) + "\n").encode("utf-8"))
+                s.settimeout(0.8)
+                data = s.recv(4096)
+                if b"pong" in data:
+                    return True, "pong"
+            except Exception:
+                pass
+            return True, "tcp_ok"
+    except Exception as e:
+        return False, type(e).__name__
+
+
+@app.get("/health/clo")
+def health_clo():
+    h, p = _read_clo_endpoint()
+    ok, detail = _probe_clo_tcp(h, p)
+    return JSONResponse({"ok": bool(ok), "handshake": detail, "host": h, "port": p})
     except Exception:
         return False, "timeout"
 
