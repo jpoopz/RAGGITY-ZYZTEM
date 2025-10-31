@@ -123,11 +123,16 @@ install_error_handlers(app)
 
 # Routers
 try:
-    import importlib
-    clo = importlib.import_module("app.routes.clo")
-    app.include_router(clo.router)
+    import sys as _sys, os as _os, importlib as _importlib
+    # Ensure project root is on sys.path for router discovery
+    _root_path = _os.path.dirname(_os.path.abspath(__file__))
+    if _root_path not in _sys.path:
+        _sys.path.insert(0, _root_path)
+    clo_module = _importlib.import_module("app.routes.clo")
+    app.include_router(clo_module.router)
+    log.info("CLO router mounted successfully.")
 except Exception as e:
-    log.warning(f"CLO router not available: {e}")
+    log.warning(f"Skipping CLO router: {e}")
 
 
 class IngestPathRequest(BaseModel):
