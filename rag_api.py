@@ -11,6 +11,7 @@ import time
 import threading
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
 import json
 import socket
 import shutil as _shutil
@@ -285,6 +286,35 @@ def query(q: str, k: int = 5):
     result = rag.query(q, k=k)
     
     return result
+
+
+@app.get("/query_stream")
+def query_stream(q: str, k: int = 5):
+    """Simple Server-Sent Events stream of the model answer tokens + final sources."""
+    if not q:
+        raise HTTPException(status_code=400, detail="query parameter 'q' is required")
+
+    try:
+        result = rag.query(q, k=k)
+        answer = result.get("answer", "")
+        contexts = result.get("contexts", [])
+    except Exception as e:
+        log.error(f"/query_stream failed: {e}")
+        raise HTTPException(status_code=500, detail="query failed")
+
+    def event_gen():
+        try:
+            # Stream tokens (basic chunking)
+            for ch in answer:
+                yield f"data: {json.dumps({'type':'token','text': ch})}\n\n"
+            # Final sources
+            yield f"data: {json.dumps({'type':'sources','contexts': contexts})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception:
+            # End stream on error
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @app.get("/troubleshoot")

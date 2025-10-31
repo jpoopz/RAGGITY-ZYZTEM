@@ -167,6 +167,10 @@ class RaggityUI(ctk.CTk):
         # Status indicators on right
         status_frame = ctk.CTkFrame(self.app_bar, fg_color="transparent")
         status_frame.pack(side="right", padx=20)
+
+        # Settings gear
+        gear = ctk.CTkButton(status_frame, text="⚙️", width=36, command=lambda: self.sidebar.select_tab("Settings"))
+        gear.pack(side="right", padx=(10,0))
         
         # API Status
         self.api_status = StatusLabel(status_frame, status="info", text="API: Checking...")
@@ -539,15 +543,11 @@ class Sidebar(ctk.CTkFrame):
         self.expanded_width = 180
         self.collapsed_width = 60
         
-        # Navigation items with icons
+        # Navigation: lean primary items
         self.nav_items = [
             ("📊", "Dashboard"),
+            ("💬", "RAG Chat"),
             ("📥", "Ingest"),
-            ("💬", "Query"),
-            ("🖥️", "System"),
-            ("⚙️", "Settings"),
-            ("📜", "Logs"),
-            ("☁️", "Bridge"),
             ("👗", "CLO3D")
         ]
         
@@ -640,10 +640,11 @@ class ContentArea(ctk.CTkFrame):
         self.app = app
         
         # Create all tabs
+        from ui.rag_chat import RAGChat
         self.tabs = {
             "Dashboard": DashboardTab(self, app),
+            "RAG Chat": RAGChat(self, app),
             "Ingest": IngestTab(self, app),
-            "Query": QueryTab(self, app),
             "System": SystemTab(self, app),
             "Settings": SettingsTab(self, app),
             "Logs": LogsTab(self, app),
