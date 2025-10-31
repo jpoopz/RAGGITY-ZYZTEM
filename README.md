@@ -1,3 +1,19 @@
+### CLO 3D Bridge — Windows Firewall Note
+
+If the CLO Bridge listener isn't reachable (timeout/refused), Windows Defender Firewall may be blocking the port.
+
+Quick steps:
+
+1. Open Windows Security → Firewall & network protection → Advanced settings.
+2. Inbound Rules → New Rule… → Port → TCP → Specific local ports: 9933 (or your configured port).
+3. Allow the connection → apply to Domain/Private (and Public if needed) → Name: "CLO Bridge".
+4. Re-run the listener in CLO: Script → Run Script… → `modules\clo_companion\clo_bridge_listener.py`.
+5. Test locally:
+
+```bash
+curl -s "http://127.0.0.1:8000/clo/health?port=9933" | jq
+```
+
 # RAGGITY ZYZTEM 2.0 🎯
 
 **Local-First RAG Engine with Premium UI and CLO 3D Integration**
