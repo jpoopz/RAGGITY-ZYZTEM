@@ -11,7 +11,19 @@ import time
 import threading
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
+import json
+import socket
+import shutil as _shutil
+import platform
+from typing import Any, Dict, List
+try:
+    import psutil as _psutil  # optional
+except Exception:
+    _psutil = None
+import requests as _requests
 
+from core.io_safety import safe_reconfigure_streams
+safe_reconfigure_streams()
 from core.rag_engine import RAGEngine
 from core.paths import ensure_dirs, get_data_dir
 from core.config import CFG
@@ -116,6 +128,81 @@ class QueryRequest(BaseModel):
 def health():
     """Health check endpoint"""
     return {"status": "ok", "service": "RAGGITY ZYZTEM API"}
+
+
+def _probe_clo(host: str = "127.0.0.1", port: int = 51235, timeout: float = 0.6):
+    """TCP probe expecting {"pong":"clo"}. Returns (ok, handshake_tag)."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            s.settimeout(timeout)
+            payload = json.dumps({"ping": "clo"}).encode("utf-8")
+            s.sendall(payload + b"\n")
+            data = s.recv(256)
+            try:
+                resp = json.loads(data.decode("utf-8", errors="ignore"))
+            except Exception:
+                return False, "wrong_service"
+            if resp.get("pong") == "clo":
+                return True, "ok"
+            return False, "wrong_service"
+    except socket.timeout:
+        return False, "timeout"
+    except Exception:
+        return False, "timeout"
+
+
+def _probe_ollama(model: str | None = None):
+    base = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+    try:
+        r = _requests.get(f"{base}/api/tags", timeout=0.8)
+        if r.status_code != 200:
+            return {"ok": False, "model_ok": False, "model": model or ""}
+        tags = r.json().get("models", [])
+        have = {m.get("name", "").split(":")[0] for m in tags}
+        if model:
+            return {"ok": True, "model_ok": model in have, "model": model}
+        return {"ok": True, "model_ok": True if have else False, "model": next(iter(have)) if have else ""}
+    except Exception:
+        return {"ok": False, "model_ok": False, "model": model or ""}
+
+
+@app.get("/health/full")
+def health_full():
+    api_host = os.getenv("API_HOST", "127.0.0.1")
+    api_port = int(os.getenv("API_PORT", "5000"))
+    clo_host = os.getenv("CLO_HOST", "127.0.0.1")
+    clo_port = int(os.getenv("CLO_PORT", "51235"))
+    vector_store = getattr(getattr(rag, "config", CFG), "vector_store", getattr(CFG, "vector_store", "faiss"))
+    ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
+
+    clo_ok, handshake = _probe_clo(clo_host, clo_port)
+    ollama = _probe_ollama(ollama_model)
+
+    # System
+    disk_free_gb = None
+    ram_free_gb = None
+    try:
+        total, used, free = _shutil.disk_usage(os.getcwd())
+        disk_free_gb = round(free / (1024**3), 2)
+    except Exception:
+        pass
+    try:
+        if _psutil:
+            ram_free_gb = round((_psutil.virtual_memory().available) / (1024**3), 2)
+    except Exception:
+        pass
+
+    return {
+        "api": {"ok": True, "host": api_host, "port": api_port},
+        "clo": {"ok": bool(clo_ok), "host": clo_host, "port": clo_port, "handshake": handshake},
+        "vector_store": vector_store,
+        "ollama": ollama,
+        "sys": {
+            "disk_free_gb": disk_free_gb if disk_free_gb is not None else 0.0,
+            "ram_free_gb": ram_free_gb if ram_free_gb is not None else 0.0,
+            "py": platform.python_version(),
+        },
+    }
 
 
 @app.post("/ingest-file")
