@@ -43,10 +43,12 @@ class RAGChat(ctk.CTkFrame):
         self._sending = False
 
     def _append(self, who: str, text: str):
-        self.history.configure(state="normal")
-        self.history.insert("end", f"[{who}] {text}\n")
-        self.history.configure(state="disabled")
-        self.history.see("end")
+        def do():
+            self.history.configure(state="normal")
+            self.history.insert("end", f"[{who}] {text}\n")
+            self.history.configure(state="disabled")
+            self.history.see("end")
+        self.after(0, do)
 
     def _append_sources(self, contexts):
         chips = []
@@ -80,39 +82,44 @@ class RAGChat(ctk.CTkFrame):
                 k = int(self.k_var.get() or "5")
             except Exception:
                 k = 5
+            temp = float(self.temp_var.get() or 0.3)
             if self.stream_var.get():
                 try:
-                    with requests.get("http://127.0.0.1:8000/query_stream", params={"q": q, "k": k}, stream=True, timeout=120) as r:
+                    with requests.get(
+                        "http://127.0.0.1:8000/query_stream",
+                        params={"q": q, "top_k": k, "temperature": temp},
+                        stream=True,
+                        timeout=30,
+                    ) as r:
                         if r.status_code != 200:
                             self._append("error", f"HTTP {r.status_code}")
                         else:
-                            acc = []
                             for line in r.iter_lines(decode_unicode=True):
                                 if not line:
                                     continue
-                                if line.startswith("data: "):
-                                    payload = line[6:]
-                                    if payload == "[DONE]":
-                                        continue
-                                    try:
-                                        obj = json.loads(payload)
-                                    except Exception:
-                                        # Treat as token
-                                        self._append("model", payload)
-                                        acc.append(payload)
-                                        continue
-                                    if obj.get("type") == "token":
-                                        token = obj.get("text", "")
-                                        if token:
-                                            self._append("model", token)
-                                            acc.append(token)
-                                    elif obj.get("type") == "sources":
-                                        self._append_sources(obj.get("contexts", []))
+                                if line.startswith(":"):
+                                    continue  # heartbeat
+                                if not line.startswith("data: "):
+                                    continue
+                                payload = line[6:]
+                                try:
+                                    obj = json.loads(payload)
+                                except Exception:
+                                    continue
+                                delta = obj.get("delta")
+                                if isinstance(delta, str) and delta:
+                                    self._append("model", delta)
+                                if obj.get("done"):
+                                    self._append_sources(obj.get("sources", []))
                 except Exception as e:
                     self._append("error", f"stream failed: {e}")
             else:
                 try:
-                    r = requests.get("http://127.0.0.1:8000/query", params={"q": q, "k": k}, timeout=120)
+                    r = requests.post(
+                        "http://127.0.0.1:8000/query",
+                        json={"q": q, "k": k},
+                        timeout=30,
+                    )
                     if r.ok:
                         data = r.json()
                         self._append("model", data.get("answer", ""))

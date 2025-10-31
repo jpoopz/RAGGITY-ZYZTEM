@@ -3,7 +3,7 @@ FastAPI RAG API Server
 Exposes RAG system as HTTP endpoints for document ingestion and querying
 """
 
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Header
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
@@ -11,7 +11,7 @@ import time
 import threading
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 import json
 import socket
 import shutil as _shutil
@@ -287,34 +287,44 @@ def query(q: str, k: int = 5):
     
     return result
 
+@app.post("/query")
+def query_post(body: QueryRequest):
+    return query(q=body.q, k=body.k or 5)
+
 
 @app.get("/query_stream")
-def query_stream(q: str, k: int = 5):
-    """Simple Server-Sent Events stream of the model answer tokens + final sources."""
+def query_stream(
+    q: str = Query(...),
+    top_k: int = 5,
+    temperature: float = 0.3,
+):
+    """Server-Sent Events stream of tokens with heartbeats and final sources."""
     if not q:
         raise HTTPException(status_code=400, detail="query parameter 'q' is required")
 
     try:
-        result = rag.query(q, k=k)
+        result = rag.query(q, k=top_k)
         answer = result.get("answer", "")
-        contexts = result.get("contexts", [])
+        sources = result.get("contexts", [])
     except Exception as e:
         log.error(f"/query_stream failed: {e}")
         raise HTTPException(status_code=500, detail="query failed")
 
-    def event_gen():
+    def gen():
+        last_hb = time.time()
         try:
-            # Stream tokens (basic chunking)
             for ch in answer:
-                yield f"data: {json.dumps({'type':'token','text': ch})}\n\n"
-            # Final sources
-            yield f"data: {json.dumps({'type':'sources','contexts': contexts})}\n\n"
-            yield "data: [DONE]\n\n"
+                now = time.time()
+                if now - last_hb > 10:
+                    # heartbeat to keep proxies alive
+                    yield ": keep-alive\n\n"
+                    last_hb = now
+                yield f"data: {json.dumps({'delta': ch})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'sources': sources})}\n\n"
         except Exception:
-            # End stream on error
-            yield "data: [DONE]\n\n"
+            yield f"data: {json.dumps({'done': True, 'sources': sources})}\n\n"
 
-    return StreamingResponse(event_gen(), media_type="text/event-stream")
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 @app.get("/troubleshoot")

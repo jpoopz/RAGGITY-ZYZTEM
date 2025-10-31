@@ -1,0 +1,10 @@
+Logs/
+Logs/_backup_*/
+*.log
+*.tmp
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+*.pyc
+
