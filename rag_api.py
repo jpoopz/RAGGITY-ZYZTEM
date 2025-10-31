@@ -3,7 +3,7 @@ FastAPI RAG API Server
 Exposes RAG system as HTTP endpoints for document ingestion and querying
 """
 
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Header, Query
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
@@ -134,6 +134,19 @@ class QueryRequest(BaseModel):
 def health():
     """Health check endpoint"""
     return {"status": "ok", "service": "RAGGITY ZYZTEM API"}
+
+
+# Request logging middleware
+@app.middleware("http")
+async def _log_requests(request: Request, call_next):
+    _t0 = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - _t0) * 1000.0
+    try:
+        log.info(f"{request.method} {request.url.path} -> {response.status_code} ({elapsed_ms:.1f}ms)")
+    except Exception:
+        pass
+    return response
 
 
 def _probe_clo(host: str = "127.0.0.1", port: int = 51235, timeout: float = 0.6):
@@ -509,17 +522,16 @@ except ImportError as e:
 
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 Starting RAGGITY ZYZTEM API...")
-    print("📡 API available at: http://0.0.0.0:8000")
-    print("📚 Endpoints:")
-    print("   GET  /health - Health check")
-    print("   POST /ingest-file - Upload and ingest a file")
-    print("   POST /ingest-path - Ingest from filesystem path")
-    print("   GET  /query?q=<question>&k=<num> - Query the RAG system")
-    print("   GET  /troubleshoot?hours=<hours> - Diagnostic report with fix recommendations")
-    print("   GET  /system-stats - Real-time CPU/RAM/GPU metrics")
-    print(f"\n🔧 Troubleshooter: {'Available' if TROUBLESHOOTER_AVAILABLE else 'Not Available'}")
-    print(f"📊 System Monitor: {'Available' if SYSTEM_MONITOR_AVAILABLE else 'Not Available'}")
-    print("\nPress Ctrl+C to stop\n")
+    log.info("🚀 Starting RAGGITY ZYZTEM API...")
+    log.info("📡 API available at: http://0.0.0.0:8000")
+    log.info("📚 Endpoints:")
+    log.info("   GET  /health - Health check")
+    log.info("   POST /ingest-file - Upload and ingest a file")
+    log.info("   POST /ingest-path - Ingest from filesystem path")
+    log.info("   GET  /query?q=<question>&k=<num> - Query the RAG system")
+    log.info("   GET  /troubleshoot?hours=<hours> - Diagnostic report with fix recommendations")
+    log.info("   GET  /system-stats - Real-time CPU/RAM/GPU metrics")
+    log.info(f"🔧 Troubleshooter: {'Available' if TROUBLESHOOTER_AVAILABLE else 'Not Available'}")
+    log.info(f"📊 System Monitor: {'Available' if SYSTEM_MONITOR_AVAILABLE else 'Not Available'}")
     
     uvicorn.run(app, host="0.0.0.0", port=8000)
