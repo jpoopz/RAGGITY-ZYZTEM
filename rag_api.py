@@ -3,7 +3,7 @@ FastAPI RAG API Server
 Exposes RAG system as HTTP endpoints for document ingestion and querying
 """
 
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Header
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
@@ -11,7 +11,20 @@ import time
 import threading
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
+from fastapi.responses import StreamingResponse, JSONResponse
+import json
+import socket
+import shutil as _shutil
+import platform
+from typing import Any, Dict, List
+try:
+    import psutil as _psutil  # optional
+except Exception:
+    _psutil = None
+import requests as _requests
 
+from core.io_safety import safe_reconfigure_streams
+safe_reconfigure_streams()
 from core.rag_engine import RAGEngine
 from core.paths import ensure_dirs, get_data_dir
 from core.config import CFG
@@ -118,6 +131,126 @@ def health():
     return {"status": "ok", "service": "RAGGITY ZYZTEM API"}
 
 
+def _probe_clo(host: str = "127.0.0.1", port: int = 51235, timeout: float = 0.6):
+    """TCP probe expecting {"pong":"clo"}. Returns (ok, handshake_tag)."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout) as s:
+            s.settimeout(timeout)
+            payload = json.dumps({"ping": "clo"}).encode("utf-8")
+            s.sendall(payload + b"\n")
+            data = s.recv(256)
+            try:
+                resp = json.loads(data.decode("utf-8", errors="ignore"))
+            except Exception:
+                return False, "wrong_service"
+            if resp.get("pong") == "clo":
+                return True, "ok"
+            return False, "wrong_service"
+    except socket.timeout:
+        return False, "timeout"
+
+
+def _read_clo_endpoint():
+    """Read CLO endpoint from config or environment."""
+    host, port = "127.0.0.1", 51235
+    try:
+        with open(os.path.join("config", "academic_rag_config.json"), "r", encoding="utf-8") as f:
+            j = json.load(f)
+            host = j.get("clo_host", j.get("CLO_HOST", host)) or host
+            try:
+                port = int(j.get("clo_port", j.get("CLO_PORT", port)) or port)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    host = os.getenv("CLO_HOST", host)
+    try:
+        port = int(os.getenv("CLO_PORT", str(port)))
+    except Exception:
+        pass
+    return host, port
+
+
+def _probe_clo_tcp(host: str, port: int):
+    """Server-side TCP probe with optional pong handshake."""
+    try:
+        with socket.create_connection((host, int(port)), timeout=0.8) as s:
+            try:
+                s.sendall((json.dumps({"ping": "clo"}) + "\n").encode("utf-8"))
+                s.settimeout(0.8)
+                data = s.recv(4096)
+                if b"pong" in data:
+                    return True, "pong"
+            except Exception:
+                pass
+            return True, "tcp_ok"
+    except Exception as e:
+        return False, type(e).__name__
+
+
+@app.get("/health/clo")
+def health_clo():
+    h, p = _read_clo_endpoint()
+    ok, detail = _probe_clo_tcp(h, p)
+    return JSONResponse({"ok": bool(ok), "handshake": detail, "host": h, "port": p})
+    except Exception:
+        return False, "timeout"
+
+
+def _probe_ollama(model: str | None = None):
+    base = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+    try:
+        r = _requests.get(f"{base}/api/tags", timeout=0.8)
+        if r.status_code != 200:
+            return {"ok": False, "model_ok": False, "model": model or ""}
+        tags = r.json().get("models", [])
+        have = {m.get("name", "").split(":")[0] for m in tags}
+        if model:
+            return {"ok": True, "model_ok": model in have, "model": model}
+        return {"ok": True, "model_ok": True if have else False, "model": next(iter(have)) if have else ""}
+    except Exception:
+        return {"ok": False, "model_ok": False, "model": model or ""}
+
+
+@app.get("/health/full")
+def health_full():
+    api_host = os.getenv("API_HOST", "127.0.0.1")
+    api_port = int(os.getenv("API_PORT", "5000"))
+    clo_host = os.getenv("CLO_HOST", "127.0.0.1")
+    clo_port = int(os.getenv("CLO_PORT", "51235"))
+    vector_store = getattr(getattr(rag, "config", CFG), "vector_store", getattr(CFG, "vector_store", "faiss"))
+    ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
+
+    clo_ok, handshake = _probe_clo(clo_host, clo_port)
+    ollama = _probe_ollama(ollama_model)
+
+    # System
+    disk_free_gb = None
+    ram_free_gb = None
+    try:
+        total, used, free = _shutil.disk_usage(os.getcwd())
+        disk_free_gb = round(free / (1024**3), 2)
+    except Exception:
+        pass
+    try:
+        if _psutil:
+            ram_free_gb = round((_psutil.virtual_memory().available) / (1024**3), 2)
+    except Exception:
+        pass
+
+    return {
+        "api": {"ok": True, "host": api_host, "port": api_port},
+        "clo": {"ok": bool(clo_ok), "host": clo_host, "port": clo_port, "handshake": handshake},
+        "vector_store": vector_store,
+        "ollama": ollama,
+        "sys": {
+            "disk_free_gb": disk_free_gb if disk_free_gb is not None else 0.0,
+            "ram_free_gb": ram_free_gb if ram_free_gb is not None else 0.0,
+            "py": platform.python_version(),
+        },
+    }
+
+
 @app.post("/ingest-file")
 async def ingest_file(background_tasks: BackgroundTasks, f: UploadFile = File(...)):
     """
@@ -198,6 +331,45 @@ def query(q: str, k: int = 5):
     result = rag.query(q, k=k)
     
     return result
+
+@app.post("/query")
+def query_post(body: QueryRequest):
+    return query(q=body.q, k=body.k or 5)
+
+
+@app.get("/query_stream")
+def query_stream(
+    q: str = Query(...),
+    top_k: int = 5,
+    temperature: float = 0.3,
+):
+    """Server-Sent Events stream of tokens with heartbeats and final sources."""
+    if not q:
+        raise HTTPException(status_code=400, detail="query parameter 'q' is required")
+
+    try:
+        result = rag.query(q, k=top_k)
+        answer = result.get("answer", "")
+        sources = result.get("contexts", [])
+    except Exception as e:
+        log.error(f"/query_stream failed: {e}")
+        raise HTTPException(status_code=500, detail="query failed")
+
+    def gen():
+        last_hb = time.time()
+        try:
+            for ch in answer:
+                now = time.time()
+                if now - last_hb > 10:
+                    # heartbeat to keep proxies alive
+                    yield ": keep-alive\n\n"
+                    last_hb = now
+                yield f"data: {json.dumps({'delta': ch})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'sources': sources})}\n\n"
+        except Exception:
+            yield f"data: {json.dumps({'done': True, 'sources': sources})}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 @app.get("/troubleshoot")

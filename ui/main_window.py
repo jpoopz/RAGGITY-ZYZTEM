@@ -47,7 +47,19 @@ class RaggityUI(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("RAGGITY ZYZTEM 2.0")
-        self.geometry("1200x750")
+        # Load UI config
+        try:
+            import json, os
+            self._ui_cfg_path = os.path.join(os.path.dirname(__file__), "config.json")
+            if os.path.exists(self._ui_cfg_path):
+                with open(self._ui_cfg_path, "r", encoding="utf-8") as f:
+                    self._ui_cfg = json.load(f)
+            else:
+                self._ui_cfg = {}
+        except Exception:
+            self._ui_cfg = {}
+
+        self.geometry(self._ui_cfg.get("main_geometry", "1200x750"))
         self.resizable(True, True)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         
@@ -81,6 +93,44 @@ class RaggityUI(ctk.CTk):
         self.after(2000, self.update_status)
         self.after(500, self.update_spinner)
 
+        # External windows
+        self._clo_window = None
+
+        # Restore last tab
+        last_tab = self._ui_cfg.get("last_open_tab", "Dashboard")
+        try:
+            self.sidebar.select_tab(last_tab)
+        except Exception:
+            self.sidebar.select_tab("Dashboard")
+
+    def open_clo_tool(self):
+        try:
+            # Lazy import to avoid hard dependency at startup
+            from ui.clo_tool_window import CLOToolWindow
+        except Exception as e:
+            self.toast.show("CLO tool not available", "error")
+            return
+        if self._clo_window and self._clo_window.winfo_exists():
+            try:
+                self._clo_window.focus()
+                self._clo_window.lift()
+            except Exception:
+                pass
+            return
+        self._clo_window = CLOToolWindow(self)
+        try:
+            self._clo_window.lift()
+            self._clo_window.focus()
+        except Exception:
+            pass
+
+    def _save_ui_cfg(self):
+        try:
+            os.makedirs(os.path.dirname(self._ui_cfg_path), exist_ok=True)
+            with open(self._ui_cfg_path, "w", encoding="utf-8") as f:
+                json.dump(self._ui_cfg, f, indent=2)
+        except Exception:
+            pass
     def create_app_bar(self):
         """Create top app bar with status indicators"""
         self.app_bar = ctk.CTkFrame(self, height=50, fg_color="#0a0a0c")
@@ -117,6 +167,10 @@ class RaggityUI(ctk.CTk):
         # Status indicators on right
         status_frame = ctk.CTkFrame(self.app_bar, fg_color="transparent")
         status_frame.pack(side="right", padx=20)
+
+        # Settings gear
+        gear = ctk.CTkButton(status_frame, text="⚙️", width=36, command=lambda: self.sidebar.select_tab("Settings"))
+        gear.pack(side="right", padx=(10,0))
         
         # API Status
         self.api_status = StatusLabel(status_frame, status="info", text="API: Checking...")
@@ -470,6 +524,11 @@ class RaggityUI(ctk.CTk):
     def on_close(self):
         """Handle window close"""
         log("UI: Window closing", "UI")
+        try:
+            self._ui_cfg["main_geometry"] = self.geometry()
+            self._save_ui_cfg()
+        except Exception:
+            pass
         self.destroy()
 
 
@@ -484,15 +543,11 @@ class Sidebar(ctk.CTkFrame):
         self.expanded_width = 180
         self.collapsed_width = 60
         
-        # Navigation items with icons
+        # Navigation: lean primary items
         self.nav_items = [
             ("📊", "Dashboard"),
+            ("💬", "RAG Chat"),
             ("📥", "Ingest"),
-            ("💬", "Query"),
-            ("🖥️", "System"),
-            ("⚙️", "Settings"),
-            ("📜", "Logs"),
-            ("☁️", "Bridge"),
             ("👗", "CLO3D")
         ]
         
@@ -566,6 +621,13 @@ class Sidebar(ctk.CTkFrame):
         
         # Show tab in content area
         self.app.content.show_tab(name)
+        # Persist last open tab
+        try:
+            self.app._ui_cfg["last_open_tab"] = name
+            self.app._ui_cfg["main_geometry"] = self.app.geometry()
+            self.app._save_ui_cfg()
+        except Exception:
+            pass
 
 
 
@@ -578,10 +640,11 @@ class ContentArea(ctk.CTkFrame):
         self.app = app
         
         # Create all tabs
+        from ui.rag_chat import RAGChat
         self.tabs = {
             "Dashboard": DashboardTab(self, app),
+            "RAG Chat": RAGChat(self, app),
             "Ingest": IngestTab(self, app),
-            "Query": QueryTab(self, app),
             "System": SystemTab(self, app),
             "Settings": SettingsTab(self, app),
             "Logs": LogsTab(self, app),
@@ -615,24 +678,64 @@ class DashboardTab(ctk.CTkFrame):
         super().__init__(parent, fg_color=DARK_BG)
         self.app = app
         
-        # Title
+        # Simple landing: three primary cards
         title = ctk.CTkLabel(self, text="Dashboard", font=heading())
-        title.pack(pady=20)
-        
-        # Two-column layout
-        columns_frame = ctk.CTkFrame(self, fg_color="transparent")
-        columns_frame.pack(fill="both", expand=True, padx=20, pady=10)
-        
-        # Left column: Quick Actions
-        left_col = ctk.CTkFrame(columns_frame, fg_color="transparent")
-        left_col.pack(side="left", fill="both", expand=True, padx=(0, 10))
-        
-        # Right column: Status
-        right_col = ctk.CTkFrame(columns_frame, fg_color="transparent")
-        right_col.pack(side="right", fill="both", expand=True, padx=(10, 0))
-        
-        self.create_quick_actions(left_col)
-        self.create_status_panel(right_col)
+        title.pack(pady=(20,10))
+        grid = ctk.CTkFrame(self, fg_color="transparent")
+        grid.pack(fill="both", expand=True, padx=20, pady=10)
+
+        self._card_rag = Card(grid)
+        self._card_rag.pack(fill="x", padx=4, pady=8)
+        ctk.CTkLabel(self._card_rag, text="RAG Chat", font=subheading()).pack(anchor="w", padx=16, pady=(14,0))
+        ctk.CTkLabel(self._card_rag, text="Ask your knowledge base with sources.", font=body(), text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2,10))
+        self._rag_badge = ctk.CTkLabel(self._card_rag, text="Status: …", font=small(), text_color=TEXT_SECONDARY)
+        self._rag_badge.pack(anchor="w", padx=16)
+        ctk.CTkButton(self._card_rag, text="Open RAG Chat", height=44, command=lambda: self.app.sidebar.select_tab("RAG Chat")).pack(padx=16, pady=14)
+
+        self._card_clo = Card(grid)
+        self._card_clo.pack(fill="x", padx=4, pady=8)
+        ctk.CTkLabel(self._card_clo, text="CLO3D Tool", font=subheading()).pack(anchor="w", padx=16, pady=(14,0))
+        ctk.CTkLabel(self._card_clo, text="Control the CLO Bridge and run actions.", font=body(), text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2,10))
+        self._clo_badge = ctk.CTkLabel(self._card_clo, text="Status: …", font=small(), text_color=TEXT_SECONDARY)
+        self._clo_badge.pack(anchor="w", padx=16)
+        ctk.CTkButton(self._card_clo, text="Open CLO3D Tool", height=44, command=self.app.open_clo_tool).pack(padx=16, pady=14)
+
+        self._card_diag = Card(grid)
+        self._card_diag.pack(fill="x", padx=4, pady=8)
+        ctk.CTkLabel(self._card_diag, text="Diagnostics", font=subheading()).pack(anchor="w", padx=16, pady=(14,0))
+        ctk.CTkLabel(self._card_diag, text="Check health and run quick checks.", font=body(), text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2,10))
+        self._diag_badge = ctk.CTkLabel(self._card_diag, text="Status: …", font=small(), text_color=TEXT_SECONDARY)
+        self._diag_badge.pack(anchor="w", padx=16)
+        link = ctk.CTkButton(self._card_diag, text="Run quick check", height=34, fg_color=ACCENT, command=self._run_quick_check)
+        link.pack(padx=16, pady=14)
+
+        # Start polling unified health
+        self.after(1000, self._poll_health_full)
+
+    def _run_quick_check(self):
+        try:
+            threading.Thread(target=lambda: requests.get("http://127.0.0.1:8000/troubleshoot", timeout=10), daemon=True).start()
+            self.app.toast.show("Diagnostics started", "info")
+        except Exception:
+            self.app.toast.show("Diagnostics failed to start", "error")
+
+    def _poll_health_full(self):
+        def run():
+            try:
+                r = requests.get("http://127.0.0.1:8000/health/full", timeout=1.2)
+                if r.ok:
+                    h = r.json()
+                    clo_ok = h.get("clo", {}).get("ok")
+                    api_ok = h.get("api", {}).get("ok")
+                    vs = h.get("vector_store", "?")
+                    self.after(0, lambda: self._rag_badge.configure(text=f"API: {'✓' if api_ok else '✗'}  VS: {vs}"))
+                    self.after(0, lambda: self._clo_badge.configure(text=f"CLO: {'✓' if clo_ok else '✗'}"))
+                    self.after(0, lambda: self._diag_badge.configure(text=f"RAM free: {h.get('sys',{}).get('ram_free_gb',0)} GB"))
+            except Exception:
+                pass
+            finally:
+                self.after(10000, self._poll_health_full)
+        threading.Thread(target=run, daemon=True).start()
 
     def create_quick_actions(self, parent):
         """Create quick actions card"""

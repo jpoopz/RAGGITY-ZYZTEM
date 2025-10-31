@@ -8,21 +8,21 @@ psutil>=5.9.0
 numpy>=1.24.0
 packaging>=23.0  # For version comparison in diagnostics
 
-# === API Backend (Flask primary, FastAPI optional) ===
-# Flask is used by modules/academic_rag/api.py (primary API server)
+# === API Backend (FastAPI primary; Flask optional — either-or is fine) ===
+# FastAPI stack for rag_api.py
+fastapi>=0.110.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Optional Flask stack (kept for either-or compatibility)
 flask>=3.0.0
 flask-cors>=4.0.0
-
-# Optional: FastAPI alternative (not currently used)
-# fastapi>=0.104.0
-# uvicorn[standard]>=0.24.0
-# python-multipart>=0.0.6
 
 # === Vector Stores ===
 # FAISS is the default vector store (no C++ compiler needed on Windows)
 faiss-cpu>=1.7.4
 
-# Optional: ChromaDB alternative (requires C++ compiler to build on Windows)
+# Optional: ChromaDB alternative (Windows often needs build tools) — keep optional
 # chromadb>=0.4.22
 
 # === Document Processing ===

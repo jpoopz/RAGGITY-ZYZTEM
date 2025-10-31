@@ -1,0 +1,37 @@
+# ── Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+.env.*
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+dist/
+build/
+
+# ── RAG / Vector DB
+.chromadb/
+vector_store/
+
+# ── Logs & exports
+Logs/
+*.log
+exports/
+
+# ── OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ── Node
+node_modules/
+
+# ── Platform-specific build junk
+Lib/
+site-packages/
