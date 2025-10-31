@@ -9,6 +9,7 @@ import requests
 import time
 import os
 import sys
+import json
 from pathlib import Path
 
 # Add parent to path
@@ -1795,7 +1796,7 @@ class SettingsTab(ctk.CTkFrame):
         ).pack(anchor="w", pady=5)
         
         # Vector store dropdown
-        self.vector_store_var = ctk.StringVariable(value=CFG.vector_store)
+        self.vector_store_var = ctk.StringVar(value=CFG.vector_store)
         self.vector_store_dropdown = ctk.CTkOptionMenu(
             vector_frame,
             variable=self.vector_store_var,
@@ -2185,6 +2186,17 @@ class BridgeTab(ctk.CTkFrame):
         self.output.insert("1.0", "Cloud Bridge Ready\n")
         
         self.after(1000, self.check_health)
+
+    def load_config(self):
+        """Load persisted bridge-related UI config if available."""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                self.auto_backup_enabled = bool(cfg.get("auto_backup_enabled", False))
+        except Exception:
+            # Non-fatal for UI start
+            self.auto_backup_enabled = False
 
     def check_health(self):
         """Check bridge health"""
