@@ -17,7 +17,9 @@ BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from ui.theme import (
-    apply_theme, heading, subheading, body, mono, small, Card, StatusLabel,
+    apply_theme, heading, subheading, body, mono, small, 
+    body_font, subheading_font, heading_font, mono_font, small_font,
+    Card, StatusLabel,
     ACCENT, TEXT, TEXT_SECONDARY, STATUS_OK, STATUS_WARN, STATUS_ERROR, STATUS_WARNING,
     STATUS_INFO, DARK_BG, CARD_BG
 )
@@ -142,8 +144,7 @@ class RaggityUI(ctk.CTk):
         title = ctk.CTkLabel(
             self.app_bar,
             text=f"⚙️ RAGGITY ZYZTEM {__version__}",
-            font=heading(),
-            text_color=ACCENT
+            **heading(ACCENT)
         )
         title.pack(side="left", padx=20)
         
@@ -151,8 +152,7 @@ class RaggityUI(ctk.CTk):
         codename_label = ctk.CTkLabel(
             self.app_bar,
             text=f"// {CODENAME}",
-            font=small(),
-            text_color=TEXT_SECONDARY
+            **small(TEXT_SECONDARY)
         )
         codename_label.pack(side="left", padx=(0, 20))
         
@@ -160,8 +160,7 @@ class RaggityUI(ctk.CTk):
         self.spinner_label = ctk.CTkLabel(
             self.app_bar,
             text="",
-            font=body(),
-            text_color=STATUS_INFO
+            **body(STATUS_INFO)
         )
         self.spinner_label.pack(side="left", padx=10)
         
@@ -181,8 +180,7 @@ class RaggityUI(ctk.CTk):
         self.gpu_status = ctk.CTkLabel(
             status_frame,
             text="GPU: ...",
-            font=body(),
-            text_color=TEXT_SECONDARY
+            **body(TEXT_SECONDARY)
         )
         self.gpu_status.pack(side="left", padx=10)
 
@@ -548,6 +546,7 @@ class Sidebar(ctk.CTkFrame):
         self.nav_items = [
             ("📊", "Dashboard"),
             ("💬", "RAG Chat"),
+            ("🎨", "Workshop"),
             ("📥", "Ingest"),
             ("👗", "CLO3D")
         ]
@@ -581,7 +580,7 @@ class Sidebar(ctk.CTkFrame):
                 text_color=TEXT_SECONDARY,
                 hover_color="#1a1a1e",
                 anchor="w",
-                font=body(),
+                font=body_font(),
                 height=45
             )
             btn.pack(pady=3, padx=10, fill="x")
@@ -642,9 +641,11 @@ class ContentArea(ctk.CTkFrame):
         
         # Create all tabs
         from ui.rag_chat import RAGChat
+        from ui.tabs.workshop_tab import WorkshopTab
         self.tabs = {
             "Dashboard": DashboardTab(self, app),
             "RAG Chat": RAGChat(self, app),
+            "Workshop": WorkshopTab(self, app),
             "Ingest": IngestTab(self, app),
             "System": SystemTab(self, app),
             "Settings": SettingsTab(self, app),
@@ -680,32 +681,40 @@ class DashboardTab(ctk.CTkFrame):
         self.app = app
         
         # Simple landing: three primary cards
-        title = ctk.CTkLabel(self, text="Dashboard", font=heading())
+        title = ctk.CTkLabel(self, text="Dashboard", **heading())
         title.pack(pady=(20,10))
         grid = ctk.CTkFrame(self, fg_color="transparent")
         grid.pack(fill="both", expand=True, padx=20, pady=10)
 
         self._card_rag = Card(grid)
         self._card_rag.pack(fill="x", padx=4, pady=8)
-        ctk.CTkLabel(self._card_rag, text="RAG Chat", font=subheading()).pack(anchor="w", padx=16, pady=(14,0))
-        ctk.CTkLabel(self._card_rag, text="Ask your knowledge base with sources.", font=body(), text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2,10))
-        self._rag_badge = ctk.CTkLabel(self._card_rag, text="Status: …", font=small(), text_color=TEXT_SECONDARY)
+        ctk.CTkLabel(self._card_rag, text="RAG Chat", **subheading()).pack(anchor="w", padx=16, pady=(14,0))
+        ctk.CTkLabel(self._card_rag, text="Ask your knowledge base with sources.", **body(TEXT_SECONDARY)).pack(anchor="w", padx=16, pady=(2,10))
+        self._rag_badge = ctk.CTkLabel(self._card_rag, text="Status: …", **small(TEXT_SECONDARY))
         self._rag_badge.pack(anchor="w", padx=16)
         ctk.CTkButton(self._card_rag, text="Open RAG Chat", height=44, command=lambda: self.app.sidebar.select_tab("RAG Chat")).pack(padx=16, pady=14)
 
+        self._card_workshop = Card(grid)
+        self._card_workshop.pack(fill="x", padx=4, pady=8)
+        ctk.CTkLabel(self._card_workshop, text="Garment Workshop", **subheading()).pack(anchor="w", padx=16, pady=(14,0))
+        ctk.CTkLabel(self._card_workshop, text="Design and export garments without CLO.", **body(TEXT_SECONDARY)).pack(anchor="w", padx=16, pady=(2,10))
+        self._workshop_badge = ctk.CTkLabel(self._card_workshop, text="Status: Ready", **small(STATUS_OK))
+        self._workshop_badge.pack(anchor="w", padx=16)
+        ctk.CTkButton(self._card_workshop, text="Open Workshop", height=44, command=lambda: self.app.sidebar.select_tab("Workshop")).pack(padx=16, pady=14)
+
         self._card_clo = Card(grid)
         self._card_clo.pack(fill="x", padx=4, pady=8)
-        ctk.CTkLabel(self._card_clo, text="CLO3D Tool", font=subheading()).pack(anchor="w", padx=16, pady=(14,0))
-        ctk.CTkLabel(self._card_clo, text="Control the CLO Bridge and run actions.", font=body(), text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2,10))
-        self._clo_badge = ctk.CTkLabel(self._card_clo, text="Status: …", font=small(), text_color=TEXT_SECONDARY)
+        ctk.CTkLabel(self._card_clo, text="CLO3D Tool", **subheading()).pack(anchor="w", padx=16, pady=(14,0))
+        ctk.CTkLabel(self._card_clo, text="Advanced CLO integration (optional).", **body(TEXT_SECONDARY)).pack(anchor="w", padx=16, pady=(2,10))
+        self._clo_badge = ctk.CTkLabel(self._card_clo, text="Status: …", **small(TEXT_SECONDARY))
         self._clo_badge.pack(anchor="w", padx=16)
         ctk.CTkButton(self._card_clo, text="Open CLO3D Tool", height=44, command=self.app.open_clo_tool).pack(padx=16, pady=14)
 
         self._card_diag = Card(grid)
         self._card_diag.pack(fill="x", padx=4, pady=8)
-        ctk.CTkLabel(self._card_diag, text="Diagnostics", font=subheading()).pack(anchor="w", padx=16, pady=(14,0))
-        ctk.CTkLabel(self._card_diag, text="Check health and run quick checks.", font=body(), text_color=TEXT_SECONDARY).pack(anchor="w", padx=16, pady=(2,10))
-        self._diag_badge = ctk.CTkLabel(self._card_diag, text="Status: …", font=small(), text_color=TEXT_SECONDARY)
+        ctk.CTkLabel(self._card_diag, text="Diagnostics", **subheading()).pack(anchor="w", padx=16, pady=(14,0))
+        ctk.CTkLabel(self._card_diag, text="Check health and run quick checks.", **body(TEXT_SECONDARY)).pack(anchor="w", padx=16, pady=(2,10))
+        self._diag_badge = ctk.CTkLabel(self._card_diag, text="Status: …", **small(TEXT_SECONDARY))
         self._diag_badge.pack(anchor="w", padx=16)
         link = ctk.CTkButton(self._card_diag, text="Run quick check", height=34, fg_color=ACCENT, command=self._run_quick_check)
         link.pack(padx=16, pady=14)
@@ -743,7 +752,7 @@ class DashboardTab(ctk.CTkFrame):
         actions_card = Card(parent)
         actions_card.pack(fill="both", expand=True)
         
-        ctk.CTkLabel(actions_card, text="Quick Actions", font=subheading()).pack(pady=15, padx=20)
+        ctk.CTkLabel(actions_card, text="Quick Actions", **subheading()).pack(pady=15, padx=20)
         
         # Open Data Folder
         open_data_btn = ctk.CTkButton(
@@ -751,7 +760,7 @@ class DashboardTab(ctk.CTkFrame):
             text="📁 Open Data Folder",
             command=self.open_data_folder,
             height=45,
-            font=body(),
+            **body(),
             fg_color=ACCENT,
             anchor="w"
         )
@@ -763,7 +772,7 @@ class DashboardTab(ctk.CTkFrame):
             text="🔄 Rebuild Index",
             command=self.rebuild_index,
             height=45,
-            font=body(),
+            **body(),
             fg_color=ACCENT,
             anchor="w"
         )
@@ -775,16 +784,16 @@ class DashboardTab(ctk.CTkFrame):
             text="🔧 Run Troubleshoot",
             command=self.run_troubleshoot,
             height=45,
-            font=body(),
+            **body(),
             fg_color=ACCENT,
             anchor="w"
         )
         self.troubleshoot_btn.pack(pady=5, padx=20, fill="x")
         
         # Action output
-        ctk.CTkLabel(actions_card, text="Output", font=body(), text_color=TEXT_SECONDARY).pack(pady=5, padx=20)
+        ctk.CTkLabel(actions_card, text="Output", **body(TEXT_SECONDARY)).pack(pady=5, padx=20)
         
-        self.action_output = ctk.CTkTextbox(actions_card, font=mono(), height=200)
+        self.action_output = ctk.CTkTextbox(actions_card, **mono(), height=200)
         self.action_output.pack(fill="both", expand=True, padx=20, pady=10)
         self.action_output.insert("1.0", "Ready for actions.\n")
 
@@ -793,10 +802,10 @@ class DashboardTab(ctk.CTkFrame):
         status_card = Card(parent)
         status_card.pack(fill="both", expand=True)
         
-        ctk.CTkLabel(status_card, text="System Status", font=subheading()).pack(pady=15, padx=20)
+        ctk.CTkLabel(status_card, text="System Status", **subheading()).pack(pady=15, padx=20)
         
         # Status display
-        self.status_text = ctk.CTkTextbox(status_card, font=mono())
+        self.status_text = ctk.CTkTextbox(status_card, **mono())
         self.status_text.pack(fill="both", expand=True, padx=20, pady=10)
         
         # Start live updates
@@ -1019,7 +1028,7 @@ class IngestTab(ctk.CTkFrame):
         self.app = app
         
         # Title
-        title = ctk.CTkLabel(self, text="Ingest Documents", font=heading())
+        title = ctk.CTkLabel(self, text="Ingest Documents", **heading())
         title.pack(pady=20)
         
         # Ingest card
@@ -1030,7 +1039,7 @@ class IngestTab(ctk.CTkFrame):
         ctk.CTkLabel(
             ingest_card,
             text="File or Directory Path",
-            font=subheading()
+            **subheading()
         ).pack(pady=10, padx=20, anchor="w")
         
         # Path entry (drag-drop area)
@@ -1038,9 +1047,31 @@ class IngestTab(ctk.CTkFrame):
             ingest_card,
             placeholder_text="Paste path or drop file here...",
             height=50,
-            font=body()
+            **body()
         )
         self.path_entry.pack(padx=20, pady=10, fill="x")
+
+        # Optional drag-and-drop support (tkinterdnd2). Gracefully degrades.
+        try:
+            from tkinterdnd2 import DND_FILES
+            self.path_entry.drop_target_register(DND_FILES)  # type: ignore[attr-defined]
+            def _on_drop(event):
+                data = getattr(event, "data", "").strip()
+                if not data:
+                    return
+                # On Windows, paths may be quoted and space-separated
+                paths = [p.strip().strip('{').strip('}').strip('"') for p in data.split()]
+                if paths:
+                    self.path_entry.delete(0, "end")
+                    self.path_entry.insert(0, paths[0])
+                    self.log_progress(f"Dropped: {paths[0]}")
+            self.path_entry.dnd_bind("<<Drop>>", _on_drop)  # type: ignore[attr-defined]
+        except Exception:
+            # No tkinterdnd2; show a subtle hint in the log once
+            try:
+                self.log_progress("Drag-and-drop not available (tkinterdnd2 not installed). Use Browse…", is_error=False)
+            except Exception:
+                pass
         
         # Button row
         button_frame = ctk.CTkFrame(ingest_card, fg_color="transparent")
@@ -1053,7 +1084,7 @@ class IngestTab(ctk.CTkFrame):
             command=self.browse_file,
             width=130,
             height=40,
-            font=body(),
+            **body(),
             fg_color=ACCENT
         )
         self.browse_btn.grid(row=0, column=0, padx=5)
@@ -1065,7 +1096,7 @@ class IngestTab(ctk.CTkFrame):
             command=self.ingest_path,
             width=130,
             height=40,
-            font=body(),
+            **body(),
             fg_color=ACCENT
         )
         self.ingest_path_btn.grid(row=0, column=1, padx=5)
@@ -1077,7 +1108,7 @@ class IngestTab(ctk.CTkFrame):
             command=self.ingest_file,
             width=130,
             height=40,
-            font=body(),
+            **body(),
             fg_color=ACCENT
         )
         self.ingest_file_btn.grid(row=0, column=2, padx=5)
@@ -1092,8 +1123,7 @@ class IngestTab(ctk.CTkFrame):
         self.index_size_label = ctk.CTkLabel(
             status_frame,
             text="Index: 0 chunks",
-            font=body(),
-            text_color=TEXT_SECONDARY
+            **body(TEXT_SECONDARY)
         )
         self.index_size_label.pack(side="left", padx=10)
         
@@ -1101,11 +1131,10 @@ class IngestTab(ctk.CTkFrame):
         ctk.CTkLabel(
             ingest_card,
             text="Progress Log",
-            font=body(),
-            text_color=TEXT_SECONDARY
+            **body(TEXT_SECONDARY)
         ).pack(pady=5, padx=20, anchor="w")
         
-        self.output = ctk.CTkTextbox(ingest_card, font=mono(), wrap="word")
+        self.output = ctk.CTkTextbox(ingest_card, **mono(), wrap="word")
         self.output.pack(fill="both", expand=True, padx=20, pady=10)
         self.output.insert("1.0", "Ready to ingest documents.\n")
         
@@ -1269,7 +1298,7 @@ class QueryTab(ctk.CTkFrame):
         self.debounce_ms = 500  # Minimum time between queries
         
         # Title
-        title = ctk.CTkLabel(self, text="Query Knowledge Base", font=heading())
+        title = ctk.CTkLabel(self, text="Query Knowledge Base", **heading())
         title.pack(pady=20)
         
         # Query card
@@ -1277,13 +1306,13 @@ class QueryTab(ctk.CTkFrame):
         query_card.pack(padx=20, pady=10, fill="x")
         
         # Query input
-        ctk.CTkLabel(query_card, text="Ask a Question", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        ctk.CTkLabel(query_card, text="Ask a Question", **subheading()).pack(pady=10, padx=20, anchor="w")
         
         # Multi-line text box for query
         self.query_input = ctk.CTkTextbox(
             query_card,
             height=80,
-            font=body(),
+            **body(),
             wrap="word"
         )
         self.query_input.pack(padx=20, pady=10, fill="x")
@@ -1294,8 +1323,7 @@ class QueryTab(ctk.CTkFrame):
         ctk.CTkLabel(
             query_card,
             text="Tip: Press Ctrl+Enter to submit",
-            font=small(),
-            text_color=TEXT_SECONDARY
+            **small(TEXT_SECONDARY)
         ).pack(padx=20, anchor="w")
         
         # Submit button
@@ -1304,7 +1332,7 @@ class QueryTab(ctk.CTkFrame):
             text="🔍 Submit Query",
             command=self.submit_query,
             height=40,
-            font=subheading(),
+            **subheading(),
             fg_color=ACCENT
         )
         self.query_btn.pack(pady=10)
@@ -1321,7 +1349,7 @@ class QueryTab(ctk.CTkFrame):
         header_frame = ctk.CTkFrame(answer_card, fg_color="transparent")
         header_frame.pack(fill="x", padx=20, pady=10)
         
-        ctk.CTkLabel(header_frame, text="Answer", font=subheading()).pack(side="left")
+        ctk.CTkLabel(header_frame, text="Answer", **subheading()).pack(side="left")
         
         # Export buttons
         self.copy_btn = ctk.CTkButton(
@@ -1330,7 +1358,7 @@ class QueryTab(ctk.CTkFrame):
             command=self.copy_answer,
             width=100,
             height=30,
-            font=body(),
+            **body(),
             state="disabled"
         )
         self.copy_btn.pack(side="right", padx=5)
@@ -1341,13 +1369,13 @@ class QueryTab(ctk.CTkFrame):
             command=self.export_to_markdown,
             width=120,
             height=30,
-            font=body(),
+            **body(),
             state="disabled"
         )
         self.export_btn.pack(side="right", padx=5)
         
         # Answer text
-        self.answer_box = ctk.CTkTextbox(answer_card, font=body(), wrap="word", height=200)
+        self.answer_box = ctk.CTkTextbox(answer_card, **body(), wrap="word", height=200)
         self.answer_box.pack(fill="x", padx=20, pady=5)
         self.answer_box.insert("1.0", "Your answer will appear here.\n")
         
@@ -1357,7 +1385,7 @@ class QueryTab(ctk.CTkFrame):
             text="▼ Show Contexts (0)",
             command=self.toggle_contexts,
             height=30,
-            font=body(),
+            **body(),
             fg_color="transparent",
             hover_color="#1a1a1e",
             state="disabled"
@@ -1365,7 +1393,7 @@ class QueryTab(ctk.CTkFrame):
         self.contexts_toggle_btn.pack(pady=5)
         
         # Contexts display (initially hidden)
-        self.contexts_box = ctk.CTkTextbox(answer_card, font=mono(), wrap="word", height=0)
+        self.contexts_box = ctk.CTkTextbox(answer_card, **mono(), wrap="word", height=0)
         self.contexts_box.pack(fill="both", expand=True, padx=20, pady=5)
         self.contexts_box.pack_forget()  # Hidden by default
 
@@ -1549,7 +1577,7 @@ class SystemTab(ctk.CTkFrame):
         self.current_stats = {}
         
         # Title
-        title = ctk.CTkLabel(self, text="System Monitor", font=heading())
+        title = ctk.CTkLabel(self, text="System Monitor", **heading())
         title.pack(pady=20)
         
         # System card
@@ -1560,7 +1588,7 @@ class SystemTab(ctk.CTkFrame):
         header_frame = ctk.CTkFrame(system_card, fg_color="transparent")
         header_frame.pack(fill="x", padx=20, pady=10)
         
-        ctk.CTkLabel(header_frame, text="Resource Usage", font=subheading()).pack(side="left")
+        ctk.CTkLabel(header_frame, text="Resource Usage", **subheading()).pack(side="left")
         
         self.snapshot_btn = ctk.CTkButton(
             header_frame,
@@ -1568,7 +1596,7 @@ class SystemTab(ctk.CTkFrame):
             command=self.take_snapshot,
             width=150,
             height=30,
-            font=body()
+            **body()
         )
         self.snapshot_btn.pack(side="right", padx=5)
         
@@ -1580,9 +1608,9 @@ class SystemTab(ctk.CTkFrame):
         cpu_section = ctk.CTkFrame(metrics_frame, fg_color=CARD_BG, corner_radius=8)
         cpu_section.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(cpu_section, text="🖥️ CPU", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        ctk.CTkLabel(cpu_section, text="🖥️ CPU", **subheading()).pack(pady=10, padx=20, anchor="w")
         
-        self.cpu_label = ctk.CTkLabel(cpu_section, text="0.0%", font=body(), text_color=TEXT_SECONDARY)
+        self.cpu_label = ctk.CTkLabel(cpu_section, text="0.0%", **body(TEXT_SECONDARY))
         self.cpu_label.pack(padx=20, anchor="w")
         
         self.cpu_bar = ctk.CTkProgressBar(cpu_section, width=400, height=20)
@@ -1593,9 +1621,9 @@ class SystemTab(ctk.CTkFrame):
         ram_section = ctk.CTkFrame(metrics_frame, fg_color=CARD_BG, corner_radius=8)
         ram_section.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(ram_section, text="💾 Memory", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        ctk.CTkLabel(ram_section, text="💾 Memory", **subheading()).pack(pady=10, padx=20, anchor="w")
         
-        self.ram_label = ctk.CTkLabel(ram_section, text="0.0%", font=body(), text_color=TEXT_SECONDARY)
+        self.ram_label = ctk.CTkLabel(ram_section, text="0.0%", **body(TEXT_SECONDARY))
         self.ram_label.pack(padx=20, anchor="w")
         
         self.ram_bar = ctk.CTkProgressBar(ram_section, width=400, height=20)
@@ -1606,19 +1634,19 @@ class SystemTab(ctk.CTkFrame):
         gpu_section = ctk.CTkFrame(metrics_frame, fg_color=CARD_BG, corner_radius=8)
         gpu_section.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(gpu_section, text="🎮 GPU", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        ctk.CTkLabel(gpu_section, text="🎮 GPU", **subheading()).pack(pady=10, padx=20, anchor="w")
         
-        self.gpu_name_label = ctk.CTkLabel(gpu_section, text="No GPU detected", font=small(), text_color=TEXT_SECONDARY)
+        self.gpu_name_label = ctk.CTkLabel(gpu_section, text="No GPU detected", **small(TEXT_SECONDARY))
         self.gpu_name_label.pack(padx=20, anchor="w")
         
-        self.gpu_util_label = ctk.CTkLabel(gpu_section, text="Utilization: 0%", font=body(), text_color=TEXT_SECONDARY)
+        self.gpu_util_label = ctk.CTkLabel(gpu_section, text="Utilization: 0%", **body(TEXT_SECONDARY))
         self.gpu_util_label.pack(padx=20, anchor="w")
         
         self.gpu_util_bar = ctk.CTkProgressBar(gpu_section, width=400, height=20)
         self.gpu_util_bar.pack(padx=20, pady=5, fill="x")
         self.gpu_util_bar.set(0)
         
-        self.gpu_vram_label = ctk.CTkLabel(gpu_section, text="VRAM: 0 MB / 0 MB", font=body(), text_color=TEXT_SECONDARY)
+        self.gpu_vram_label = ctk.CTkLabel(gpu_section, text="VRAM: 0 MB / 0 MB", **body(TEXT_SECONDARY))
         self.gpu_vram_label.pack(padx=20, anchor="w")
         
         self.gpu_vram_bar = ctk.CTkProgressBar(gpu_section, width=400, height=20)
@@ -1775,7 +1803,7 @@ class SettingsTab(ctk.CTkFrame):
         self.load_settings()
         
         # Title
-        title = ctk.CTkLabel(self, text="Settings", font=heading())
+        title = ctk.CTkLabel(self, text="Settings", **heading())
         title.pack(pady=20)
         
         # Settings card
@@ -1783,7 +1811,7 @@ class SettingsTab(ctk.CTkFrame):
         settings_card.pack(padx=20, pady=10, fill="both", expand=True)
         
         # Vector Store section
-        ctk.CTkLabel(settings_card, text="Vector Store", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        ctk.CTkLabel(settings_card, text="Vector Store", **subheading()).pack(pady=10, padx=20, anchor="w")
         
         vector_frame = ctk.CTkFrame(settings_card, fg_color="transparent")
         vector_frame.pack(pady=10, padx=20, fill="x")
@@ -1791,8 +1819,7 @@ class SettingsTab(ctk.CTkFrame):
         ctk.CTkLabel(
             vector_frame,
             text="Select vector database backend:",
-            font=body(),
-            text_color=TEXT_SECONDARY
+            **body(TEXT_SECONDARY)
         ).pack(anchor="w", pady=5)
         
         # Vector store dropdown
@@ -1802,7 +1829,7 @@ class SettingsTab(ctk.CTkFrame):
             variable=self.vector_store_var,
             values=["faiss", "chroma"],
             width=200,
-            font=body()
+            **body()
         )
         self.vector_store_dropdown.pack(anchor="w", pady=5)
         
@@ -1810,8 +1837,7 @@ class SettingsTab(ctk.CTkFrame):
         ctk.CTkLabel(
             vector_frame,
             text="FAISS: Fast, lightweight, in-memory (default)\nChroma: Persistent, feature-rich, requires chromadb package",
-            font=small(),
-            text_color=TEXT_SECONDARY,
+            **small(TEXT_SECONDARY),
             justify="left"
         ).pack(anchor="w", pady=5)
         
@@ -1821,7 +1847,7 @@ class SettingsTab(ctk.CTkFrame):
             text="💾 Save Settings",
             command=self.save_settings,
             height=40,
-            font=subheading(),
+            **subheading(),
             fg_color=ACCENT
         )
         self.save_btn.pack(pady=20)
@@ -1834,7 +1860,7 @@ class SettingsTab(ctk.CTkFrame):
         info_card = Card(self)
         info_card.pack(padx=20, pady=10, fill="x")
         
-        ctk.CTkLabel(info_card, text="Configuration Info", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        ctk.CTkLabel(info_card, text="Configuration Info", **subheading()).pack(pady=10, padx=20, anchor="w")
         
         info_text = f"""Current Configuration:
         
@@ -1851,8 +1877,7 @@ Edit config.yaml or set environment variables for more options.
         info_label = ctk.CTkLabel(
             info_card,
             text=info_text,
-            font=mono(),
-            text_color=TEXT_SECONDARY,
+            **mono(TEXT_SECONDARY),
             justify="left"
         )
         info_label.pack(padx=20, pady=10, anchor="w")
@@ -1934,7 +1959,7 @@ class LogsTab(ctk.CTkFrame):
         self.log_filter = "ALL"
         
         # Title
-        title = ctk.CTkLabel(self, text="Live Logs", font=heading())
+        title = ctk.CTkLabel(self, text="Live Logs", **heading())
         title.pack(pady=20)
         
         # Logs card
@@ -1945,7 +1970,7 @@ class LogsTab(ctk.CTkFrame):
         controls_frame = ctk.CTkFrame(logs_card, fg_color="transparent")
         controls_frame.pack(fill="x", padx=20, pady=10)
         
-        ctk.CTkLabel(controls_frame, text="Controls", font=subheading()).pack(side="left")
+        ctk.CTkLabel(controls_frame, text="Controls", **subheading()).pack(side="left")
         
         # Open logs folder button
         self.open_folder_btn = ctk.CTkButton(
@@ -1954,7 +1979,7 @@ class LogsTab(ctk.CTkFrame):
             command=self.open_logs_folder,
             width=150,
             height=30,
-            font=body()
+            **body()
         )
         self.open_folder_btn.pack(side="right", padx=5)
         
@@ -1965,7 +1990,7 @@ class LogsTab(ctk.CTkFrame):
             command=self.toggle_pause,
             width=130,
             height=30,
-            font=body(),
+            **body(),
             fg_color=ACCENT
         )
         self.pause_btn.pack(side="right", padx=5)
@@ -1974,7 +1999,7 @@ class LogsTab(ctk.CTkFrame):
         filter_frame = ctk.CTkFrame(logs_card, fg_color="transparent")
         filter_frame.pack(fill="x", padx=20, pady=5)
         
-        ctk.CTkLabel(filter_frame, text="Filter:", font=body(), text_color=TEXT_SECONDARY).pack(side="left", padx=(0, 10))
+        ctk.CTkLabel(filter_frame, text="Filter:", **body(TEXT_SECONDARY)).pack(side="left", padx=(0, 10))
         
         # Filter buttons
         self.filter_buttons = {}
@@ -1985,7 +2010,7 @@ class LogsTab(ctk.CTkFrame):
                 command=lambda l=level: self.set_filter(l),
                 width=70,
                 height=28,
-                font=small(),
+                **small(),
                 fg_color=ACCENT if level == "ALL" else "transparent",
                 border_width=1,
                 border_color=ACCENT
@@ -1998,7 +2023,7 @@ class LogsTab(ctk.CTkFrame):
         self.status.pack(pady=10)
         
         # Log viewer
-        self.log_viewer = ctk.CTkTextbox(logs_card, font=mono(), wrap="word")
+        self.log_viewer = ctk.CTkTextbox(logs_card, **mono(), wrap="word")
         self.log_viewer.pack(fill="both", expand=True, padx=20, pady=10)
         
         self.after(1000, self.refresh)
@@ -2122,7 +2147,7 @@ class BridgeTab(ctk.CTkFrame):
         self.app = app
         
         # Title
-        title = ctk.CTkLabel(self, text="Cloud Bridge", font=heading())
+        title = ctk.CTkLabel(self, text="Cloud Bridge", **heading())
         title.pack(pady=20)
         
         self.auto_backup_enabled = False
@@ -2136,8 +2161,7 @@ class BridgeTab(ctk.CTkFrame):
             ctk.CTkLabel(
                 self,
                 text="⚠️ Cloud Bridge not available",
-                font=subheading(),
-                text_color=STATUS_WARNING
+                **subheading(STATUS_WARNING)
             ).pack(pady=50)
             return
         
@@ -2150,42 +2174,53 @@ class BridgeTab(ctk.CTkFrame):
         ctk.CTkLabel(
             bridge_card,
             text=f"URL: {cloud_url}",
-            font=body(),
-            text_color=TEXT_SECONDARY
+            **body(TEXT_SECONDARY)
         ).pack(pady=10)
         
         # Status
-        self.status = StatusLabel(bridge_card, status="info", text="⏳ Checking...")
+        self.status = StatusLabel(bridge_card, status="info", text="⚪ Ready (manual mode)")
         self.status.pack(pady=10)
         
         # Buttons
         btn_frame = ctk.CTkFrame(bridge_card, fg_color="transparent")
         btn_frame.pack(pady=15)
         
+        self.health_btn = ctk.CTkButton(
+            btn_frame,
+            text="Check Health",
+            command=self.check_health,
+            width=120,
+            fg_color="#2ecc71"
+        )
+        self.health_btn.grid(row=0, column=0, padx=5)
+        
         self.test_btn = ctk.CTkButton(
             btn_frame,
             text="Send Test Event",
             command=self.send_test,
-            width=150,
+            width=120,
             fg_color=ACCENT
         )
-        self.test_btn.grid(row=0, column=0, padx=5)
+        self.test_btn.grid(row=0, column=1, padx=5)
         
         self.backup_btn = ctk.CTkButton(
             btn_frame,
             text="Push Backup",
             command=self.push_backup,
-            width=150,
+            width=120,
             fg_color=ACCENT
         )
-        self.backup_btn.grid(row=0, column=1, padx=5)
+        self.backup_btn.grid(row=0, column=2, padx=5)
         
         # Output
-        self.output = ctk.CTkTextbox(bridge_card, font=mono())
+        self.output = ctk.CTkTextbox(bridge_card, **mono())
         self.output.pack(fill="both", expand=True, padx=20, pady=10)
         self.output.insert("1.0", "Cloud Bridge Ready\n")
+        self.output.insert("2.0", "💡 Tip: Configure CLOUD_URL in .env to use cloud features\n")
+        self.output.insert("3.0", "Connection checks are now manual - use buttons above to test.\n")
         
-        self.after(1000, self.check_health)
+        # Disabled automatic health checks - only check when user requests
+        # self.after(1000, self.check_health)
 
     def load_config(self):
         """Load persisted bridge-related UI config if available."""
@@ -2199,19 +2234,23 @@ class BridgeTab(ctk.CTkFrame):
             self.auto_backup_enabled = False
 
     def check_health(self):
-        """Check bridge health"""
+        """Check bridge health (manual only - no auto-polling)"""
         def check():
             try:
+                self.after(0, lambda: self.status.set_status("info", "⏳ Checking..."))
                 health = bridge.health()
                 if health.get("status") == "ok":
                     self.after(0, lambda: self.status.set_status("ok", "🟢 Cloud Online"))
+                    self.after(0, lambda: self.output.insert("end", f"✓ Health check passed at {time.strftime('%H:%M:%S')}\n"))
                 else:
                     self.after(0, lambda: self.status.set_status("warn", "🟡 Degraded"))
-            except Exception:
+                    self.after(0, lambda: self.output.insert("end", f"⚠ Health check degraded at {time.strftime('%H:%M:%S')}\n"))
+            except Exception as e:
                 self.after(0, lambda: self.status.set_status("error", "🔴 Offline"))
+                self.after(0, lambda: self.output.insert("end", f"✗ Connection failed at {time.strftime('%H:%M:%S')}: {e}\n"))
         
         threading.Thread(target=check, daemon=True).start()
-        self.after(5000, self.check_health)
+        # Removed automatic re-scheduling - only checks when manually triggered
 
     def send_test(self):
         """Send test event"""
@@ -2302,7 +2341,7 @@ class CLO3DTab(ctk.CTkFrame):
             self.clo_available = False
         
         # Title
-        title = ctk.CTkLabel(self, text="CLO 3D Integration", font=heading())
+        title = ctk.CTkLabel(self, text="CLO 3D Integration", **heading())
         title.pack(pady=20)
         
         if not self.clo_available:
@@ -2311,8 +2350,7 @@ class CLO3DTab(ctk.CTkFrame):
             ctk.CTkLabel(
                 error_card,
                 text="⚠️ CLO companion module not available",
-                font=subheading(),
-                text_color=STATUS_WARNING
+                **subheading(STATUS_WARNING)
             ).pack(pady=50)
             return
         
@@ -2320,7 +2358,7 @@ class CLO3DTab(ctk.CTkFrame):
         conn_card = Card(self)
         conn_card.pack(padx=20, pady=10, fill="x")
         
-        ctk.CTkLabel(conn_card, text="Connection", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        ctk.CTkLabel(conn_card, text="Connection", **subheading()).pack(pady=10, padx=20, anchor="w")
         
         # Help/Instructions panel (collapsible)
         help_frame = ctk.CTkFrame(conn_card, fg_color=CARD_BG, corner_radius=8)
@@ -2330,14 +2368,14 @@ class CLO3DTab(ctk.CTkFrame):
             help_frame,
             text="ℹ️ Show Setup Instructions",
             command=self.toggle_help,
-            font=small(),
+            **small(),
             fg_color="transparent",
             hover_color="#1a1a1e",
             height=25
         )
         self.help_toggle_btn.pack(pady=5)
         
-        self.help_content = ctk.CTkTextbox(help_frame, font=small(), height=0, wrap="word")
+        self.help_content = ctk.CTkTextbox(help_frame, **small(), height=0, wrap="word")
         self.help_content.pack_forget()  # Hidden by default
         
         help_text = """Quick Start Checklist:
@@ -2370,15 +2408,15 @@ Troubleshooting:
         config_frame = ctk.CTkFrame(conn_card, fg_color="transparent")
         config_frame.pack(pady=5, padx=20, fill="x")
         
-        ctk.CTkLabel(config_frame, text="Host:", font=body(), text_color=TEXT_SECONDARY).pack(side="left", padx=(0, 5))
+        ctk.CTkLabel(config_frame, text="Host:", **body(TEXT_SECONDARY)).pack(side="left", padx=(0, 5))
         
-        self.host_entry = ctk.CTkEntry(config_frame, width=150, font=body())
+        self.host_entry = ctk.CTkEntry(config_frame, width=150, **body())
         self.host_entry.insert(0, self.default_host)
         self.host_entry.pack(side="left", padx=5)
         
-        ctk.CTkLabel(config_frame, text="Port:", font=body(), text_color=TEXT_SECONDARY).pack(side="left", padx=(20, 5))
+        ctk.CTkLabel(config_frame, text="Port:", **body(TEXT_SECONDARY)).pack(side="left", padx=(20, 5))
         
-        self.port_entry = ctk.CTkEntry(config_frame, width=80, font=body())
+        self.port_entry = ctk.CTkEntry(config_frame, width=80, **body())
         self.port_entry.insert(0, str(self.default_port))
         self.port_entry.pack(side="left", padx=5)
         
@@ -2389,7 +2427,7 @@ Troubleshooting:
             command=self.toggle_connection,
             width=120,
             height=32,
-            font=body(),
+            **body(),
             fg_color=ACCENT
         )
         self.connect_btn.pack(side="left", padx=20)
@@ -2401,7 +2439,7 @@ Troubleshooting:
             command=self.toggle_help,
             width=120,
             height=32,
-            font=small(),
+            **small(),
             fg_color="transparent",
             hover_color=CARD_BG,
             border_width=1,
@@ -2423,8 +2461,7 @@ Troubleshooting:
         self.bridge_warning = ctk.CTkLabel(
             warning_text_frame,
             text="⚠️ Listener not found. Open CLO → Script → Run Script… (see help)",
-            font=small(),
-            text_color=STATUS_WARNING,
+            **small(STATUS_WARNING),
             wraplength=400
         )
         self.bridge_warning.pack(side="left", padx=5)
@@ -2440,7 +2477,7 @@ Troubleshooting:
             command=self.show_error_details,
             width=50,
             height=24,
-            font=small(),
+            **small(),
             fg_color="transparent",
             hover_color=CARD_BG,
             border_width=1,
@@ -2455,7 +2492,7 @@ Troubleshooting:
             command=self.retry_bridge_check,
             width=60,
             height=24,
-            font=small(),
+            **small(),
             fg_color=ACCENT,
             hover_color=STATUS_OK
         )
@@ -2468,7 +2505,7 @@ Troubleshooting:
             command=self.hide_warning_session,
             width=50,
             height=24,
-            font=small(),
+            **small(),
             fg_color="transparent",
             hover_color=CARD_BG,
             border_width=1,
@@ -2483,7 +2520,7 @@ Troubleshooting:
         actions_card = Card(self)
         actions_card.pack(padx=20, pady=10, fill="both", expand=True)
         
-        ctk.CTkLabel(actions_card, text="Actions", font=subheading()).pack(pady=10, padx=20, anchor="w")
+        ctk.CTkLabel(actions_card, text="Actions", **subheading()).pack(pady=10, padx=20, anchor="w")
         
         # Action buttons grid
         btn_grid = ctk.CTkFrame(actions_card, fg_color="transparent")
@@ -2496,7 +2533,7 @@ Troubleshooting:
             command=self.import_garment,
             width=180,
             height=40,
-            font=body(),
+            **body(),
             state="disabled"
         )
         self.import_btn.grid(row=0, column=0, padx=5, pady=5)
@@ -2507,7 +2544,7 @@ Troubleshooting:
             command=self.export_garment,
             width=180,
             height=40,
-            font=body(),
+            **body(),
             state="disabled"
         )
         self.export_btn.grid(row=0, column=1, padx=5, pady=5)
@@ -2516,9 +2553,9 @@ Troubleshooting:
         sim_frame = ctk.CTkFrame(btn_grid, fg_color="transparent")
         sim_frame.grid(row=1, column=0, columnspan=2, pady=10)
         
-        ctk.CTkLabel(sim_frame, text="Simulation Steps:", font=body(), text_color=TEXT_SECONDARY).pack(side="left", padx=5)
+        ctk.CTkLabel(sim_frame, text="Simulation Steps:", **body(TEXT_SECONDARY)).pack(side="left", padx=5)
         
-        self.sim_steps = ctk.CTkEntry(sim_frame, width=80, font=body())
+        self.sim_steps = ctk.CTkEntry(sim_frame, width=80, **body())
         self.sim_steps.insert(0, "50")
         self.sim_steps.pack(side="left", padx=5)
         
@@ -2528,7 +2565,7 @@ Troubleshooting:
             command=self.run_simulation,
             width=150,
             height=35,
-            font=body(),
+            **body(),
             state="disabled",
             fg_color=ACCENT
         )
@@ -2541,7 +2578,7 @@ Troubleshooting:
             command=self.take_screenshot,
             width=180,
             height=40,
-            font=body(),
+            **body(),
             state="disabled"
         )
         self.screenshot_btn.grid(row=2, column=0, padx=5, pady=5)
@@ -2550,20 +2587,19 @@ Troubleshooting:
         preview_frame = ctk.CTkFrame(actions_card, fg_color=CARD_BG, corner_radius=8)
         preview_frame.pack(pady=10, padx=20, fill="x")
         
-        ctk.CTkLabel(preview_frame, text="Last Screenshot:", font=body(), text_color=TEXT_SECONDARY).pack(pady=5, padx=10, anchor="w")
+        ctk.CTkLabel(preview_frame, text="Last Screenshot:", **body(TEXT_SECONDARY)).pack(pady=5, padx=10, anchor="w")
         
         self.screenshot_preview = ctk.CTkLabel(
             preview_frame,
             text="No screenshot yet",
-            font=small(),
-            text_color=TEXT_SECONDARY
+            **small(TEXT_SECONDARY)
         )
         self.screenshot_preview.pack(pady=5, padx=10)
         
         # Output log
-        ctk.CTkLabel(actions_card, text="Activity Log", font=subheading()).pack(pady=(15, 5), padx=20, anchor="w")
+        ctk.CTkLabel(actions_card, text="Activity Log", **subheading()).pack(pady=(15, 5), padx=20, anchor="w")
         
-        self.output = ctk.CTkTextbox(actions_card, font=mono(), height=150)
+        self.output = ctk.CTkTextbox(actions_card, **mono(), height=150)
         self.output.pack(fill="both", expand=True, padx=20, pady=10)
         self.output.insert("1.0", "CLO 3D Integration ready.\nConnect to CLO bridge to begin.\n")
 

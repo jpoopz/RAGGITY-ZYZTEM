@@ -1,0 +1,39 @@
+{
+  "version": "7.0",
+  "project_name": "T-Shirt Base Template",
+  "garments": [
+    {
+      "name": "T-Shirt",
+      "type": "tshirt",
+      "fabric": "cotton",
+      "style": "casual",
+      "patterns": [
+        {
+          "name": "Front",
+          "points": []
+        },
+        {
+          "name": "Back",
+          "points": []
+        },
+        {
+          "name": "Sleeve_L",
+          "points": []
+        },
+        {
+          "name": "Sleeve_R",
+          "points": []
+        }
+      ],
+      "seams": [],
+      "created": "2025-10-31",
+      "note": "Base T-shirt template for RAGGITY ZYZTEM"
+    }
+  ],
+  "metadata": {
+    "generator": "RAGGITY ZYZTEM 2.0",
+    "template": "tshirt_base.zprj",
+    "description": "Basic T-shirt template with front, back, and sleeves"
+  }
+}
+

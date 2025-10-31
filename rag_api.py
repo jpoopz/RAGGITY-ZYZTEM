@@ -308,6 +308,10 @@ async def ingest_file(background_tasks: BackgroundTasks, f: UploadFile = File(..
     # Schedule ingestion in background
     background_tasks.add_task(rag.ingest_path, dst)
     
+    try:
+        log.info(f"/ingest-file saved: {f.filename} -> {dst}")
+    except Exception:
+        pass
     return {"message": "ingest scheduled", "file": f.filename}
 
 
@@ -324,6 +328,10 @@ def ingest_path(request: IngestPathRequest):
     
     rag.ingest_path(path)
     
+    try:
+        log.info(f"/ingest-path: {path}")
+    except Exception:
+        pass
     return {"message": "ingested", "path": path}
 
 
@@ -540,6 +548,66 @@ try:
     
 except ImportError as e:
     log.warning(f"Academic routes not available: {e}")
+
+
+# Garment Workshop routes
+try:
+    from modules.garment_generator import (
+        generate_garment as _gen_garment,
+        list_generated_garments as _list_garments,
+        delete_garment as _del_garment,
+        get_fabric_presets,
+        STYLE_TEMPLATES
+    )
+    from modules.project_manager import open_in_clo as _open_clo, get_settings as _get_settings
+    
+    @app.post("/generate_garment")
+    def api_generate_garment(
+        name: str,
+        fabric: str = "cotton",
+        style: str = "tshirt",
+        color: Optional[str] = None,
+        notes: Optional[str] = None
+    ):
+        """Generate a new garment from template"""
+        result = _gen_garment(name=name, fabric=fabric, style=style, color=color, notes=notes)
+        return result
+    
+    @app.get("/list_garments")
+    def api_list_garments():
+        """List all generated garments"""
+        garments = _list_garments()
+        return {"garments": garments, "count": len(garments)}
+    
+    @app.delete("/delete_garment/{garment_id}")
+    def api_delete_garment(garment_id: str):
+        """Delete a garment"""
+        result = _del_garment(garment_id)
+        return result
+    
+    @app.get("/garment_presets")
+    def api_garment_presets():
+        """Get available fabric presets and style templates"""
+        return {
+            "fabrics": get_fabric_presets(),
+            "styles": STYLE_TEMPLATES
+        }
+    
+    @app.post("/open_in_clo")
+    def api_open_in_clo(file_path: str):
+        """Open a garment file in CLO 3D"""
+        result = _open_clo(file_path)
+        return result
+    
+    @app.get("/workshop_settings")
+    def api_workshop_settings():
+        """Get workshop settings"""
+        return _get_settings()
+    
+    log.info("Garment Workshop routes registered")
+    
+except ImportError as e:
+    log.warning(f"Garment Workshop routes not available: {e}")
 
 
 if __name__ == "__main__":

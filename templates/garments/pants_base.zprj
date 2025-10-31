@@ -1,0 +1,39 @@
+{
+  "version": "7.0",
+  "project_name": "Pants Base Template",
+  "garments": [
+    {
+      "name": "Pants",
+      "type": "pants",
+      "fabric": "denim",
+      "style": "casual",
+      "patterns": [
+        {
+          "name": "Front_Left",
+          "points": []
+        },
+        {
+          "name": "Front_Right",
+          "points": []
+        },
+        {
+          "name": "Back_Left",
+          "points": []
+        },
+        {
+          "name": "Back_Right",
+          "points": []
+        }
+      ],
+      "seams": [],
+      "created": "2025-10-31",
+      "note": "Base pants template for RAGGITY ZYZTEM"
+    }
+  ],
+  "metadata": {
+    "generator": "RAGGITY ZYZTEM 2.0",
+    "template": "pants_base.zprj",
+    "description": "Basic pants template with front and back legs"
+  }
+}
+
